@@ -109,6 +109,7 @@ impl GrokSearchProvider {
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(6))
             .read_timeout(Duration::from_secs(120))
+            .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .unwrap_or_default();
 
@@ -251,38 +252,64 @@ impl GrokSearchProvider {
         }
     }
 
-    /// Parse SSE streaming response, extracting content from delta chunks
+    /// Parse SSE streaming response, extracting content from delta chunks.
+    /// Uses `response.chunk()` to read incrementally, avoiding hangs on keep-alive connections.
+    /// Terminates on `data: [DONE]`, `finish_reason` != null, or connection close.
     async fn parse_streaming_response(&self, response: reqwest::Response) -> Result<String> {
-        let body = response.text().await.context("Failed to read response body")?;
         let mut content = String::new();
-        let mut full_body_lines: Vec<&str> = Vec::new();
+        let mut line_buf = String::new();
+        let mut full_body_lines: Vec<String> = Vec::new();
+        let mut finished = false;
 
-        for line in body.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
+        if Config::debug_enabled() {
+            eprintln!("[grok] entering parse_streaming_response, reading chunks...");
+        }
 
-            full_body_lines.push(line);
+        let mut response = response;
+        while let Some(chunk) = response.chunk().await.context("Failed to read SSE chunk")? {
+            let chunk_str = String::from_utf8_lossy(&chunk);
+            line_buf.push_str(&chunk_str);
 
-            // Handle SSE "data: {...}" and "data:{...}" formats
-            if let Some(data_str) = line.strip_prefix("data:") {
-                let data_str = data_str.trim();
-                if data_str == "[DONE]" {
+            // Process complete lines from the buffer
+            while let Some(newline_pos) = line_buf.find('\n') {
+                let line = line_buf[..newline_pos].trim().to_string();
+                line_buf = line_buf[newline_pos + 1..].to_string();
+
+                if line.is_empty() {
                     continue;
                 }
 
-                if let Ok(data) = serde_json::from_str::<serde_json::Value>(data_str) {
-                    if let Some(choices) = data.get("choices").and_then(|c| c.as_array()) {
-                        if let Some(first) = choices.first() {
-                            if let Some(delta_content) =
-                                first.get("delta").and_then(|d| d.get("content")).and_then(|c| c.as_str())
-                            {
-                                content.push_str(delta_content);
+                full_body_lines.push(line.clone());
+
+                // Handle SSE "data: {...}" and "data:{...}" formats
+                if let Some(data_str) = line.strip_prefix("data:") {
+                    let data_str = data_str.trim();
+                    if data_str == "[DONE]" {
+                        finished = true;
+                        break;
+                    }
+
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(data_str) {
+                        if let Some(choices) = data.get("choices").and_then(|c| c.as_array()) {
+                            if let Some(first) = choices.first() {
+                                if let Some(delta_content) =
+                                    first.get("delta").and_then(|d| d.get("content")).and_then(|c| c.as_str())
+                                {
+                                    content.push_str(delta_content);
+                                }
+                                // Check for finish_reason (some proxies don't send [DONE])
+                                if first.get("finish_reason").and_then(|v| v.as_str()).is_some() {
+                                    finished = true;
+                                    break;
+                                }
                             }
                         }
                     }
                 }
+            }
+
+            if finished {
+                break;
             }
         }
 
@@ -305,7 +332,13 @@ impl GrokSearchProvider {
         }
 
         if Config::debug_enabled() {
-            eprintln!("[grok] response content length: {}", content.len());
+            eprintln!("[grok] stream ended (finished={}), lines: {}, content length: {}",
+                finished, full_body_lines.len(), content.len());
+            if content.is_empty() && !full_body_lines.is_empty() {
+                for (i, l) in full_body_lines.iter().take(5).enumerate() {
+                    eprintln!("[grok] body line {}: {}", i, &l[..l.len().min(200)]);
+                }
+            }
         }
 
         Ok(content)
@@ -336,6 +369,9 @@ impl GrokSearchProvider {
             {
                 Ok(response) => {
                     let status = response.status();
+                    if Config::debug_enabled() {
+                        eprintln!("[grok] HTTP {} from {}", status.as_u16(), &url);
+                    }
                     if status.is_success() {
                         return self.parse_streaming_response(response).await;
                     }
