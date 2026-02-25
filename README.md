@@ -1,87 +1,146 @@
 # aimcp
 
-Unified AI MCP Server — a single Rust binary that combines [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), and [Grok Search](https://x.ai/) into one MCP server.
+[English](README-en.md)
 
-## Features
+统一 AI MCP 服务器 — 一个 Rust 二进制文件，将 [Gemini CLI](https://github.com/google-gemini/gemini-cli)、[Codex CLI](https://github.com/openai/codex) 和 [Grok Search](https://x.ai/) 整合为一个 MCP 服务器。
 
-- **One binary, all tools** — configure a single MCP server instead of three
-- **Runtime detection** — automatically detects which tools are available at startup; unavailable tools return clear error messages when called
-- **AdaptiveStdio transport** — auto-detects JSONL and LSP-style framing for maximum client compatibility
-- **GrokSearch in Rust** — zero Python dependency; web search and content fetching via Grok API with SSE streaming and retry
+## 特性
 
-## Tools
+- **一个二进制，全部工具** — 只需配置一个 MCP 服务器，取代三个
+- **运行时检测** — 启动时自动检测可用工具；不可用的工具在被调用时返回清晰的错误信息
+- **AdaptiveStdio 传输** — 自动检测 JSONL 和 LSP 帧格式，最大化客户端兼容性
+- **纯 Rust 的 GrokSearch** — 零 Python 依赖；通过 Grok API 实现 Web 搜索和内容抓取，支持 SSE 流式传输和重试
 
-| Tool | Source | Description |
-|------|--------|-------------|
-| `gemini` | Gemini CLI | AI-driven tasks with session continuity |
-| `codex` | Codex CLI | AI-assisted coding with sandbox policies |
-| `web_search` | Grok API | Web search returning structured JSON results |
-| `web_fetch` | Grok API | Fetch web page content as Markdown |
-| `get_config_info` | Grok API | Show configuration and test API connectivity |
-| `switch_model` | Grok API | Switch the Grok model and persist the setting |
+## 工具列表
 
-## Installation
+| 工具 | 来源 | 描述 |
+|------|------|------|
+| `gemini` | Gemini CLI | AI 驱动的任务执行，支持会话连续性 |
+| `codex` | Codex CLI | AI 辅助编码，支持沙箱策略 |
+| `web_search` | Grok API | Web 搜索，返回结构化 JSON 结果 |
+| `web_fetch` | Grok API | 抓取网页内容并转为 Markdown |
+| `get_config_info` | Grok API | 显示配置信息并测试 API 连接 |
 
-### From source
+## 工具使用说明
+
+### `gemini` — 执行 Gemini CLI
+
+| 参数 | 必填 | 类型 | 默认值 | 描述 |
+|------|------|------|--------|------|
+| `PROMPT` | **是** | string | — | 发送给 Gemini 的任务指令 |
+| `sandbox` | 否 | bool | `false` | 在沙箱模式下运行（隔离执行） |
+| `SESSION_ID` | 否 | string | — | 恢复已有会话，用于多轮对话 |
+| `return_all_messages` | 否 | bool | `false` | 返回所有消息（含推理过程和工具调用） |
+| `model` | 否 | string | — | 模型覆盖。回退到 `GEMINI_FORCE_MODEL` 环境变量或 Gemini CLI 默认值 |
+| `timeout_secs` | 否 | int | 600 | 超时时间，单位秒（1–3600） |
+
+**返回结构：**
+- `success` — 执行状态（布尔值）
+- `SESSION_ID` — 用于恢复对话的唯一标识符
+- `agent_messages` — 拼接的助手回复文本
+- `all_messages` — （可选）`return_all_messages=true` 时返回完整的 JSON 事件
+- `error` — `success=false` 时的错误描述
+
+### `codex` — 执行 Codex CLI
+
+| 参数 | 必填 | 类型 | 默认值 | 描述 |
+|------|------|------|--------|------|
+| `PROMPT` | **是** | string | — | 发送给 Codex 的任务指令 |
+| `cd` | **是** | string | — | 工作目录路径 |
+| `sandbox` | 否 | string | `"read-only"` | 沙箱策略：`"read-only"`、`"workspace-write"` 或 `"danger-full-access"` |
+| `SESSION_ID` | 否 | string | — | 恢复之前的会话 |
+| `skip_git_repo_check` | 否 | bool | `false` | 允许在 Git 仓库外运行 |
+| `return_all_messages` | 否 | bool | `false` | 返回完整的推理轨迹 |
+| `return_all_messages_limit` | 否 | int | 10000 | `return_all_messages` 为 true 时的最大消息数 |
+| `image` | 否 | array | `[]` | 要附加的图片文件路径 |
+| `model` | 否 | string | — | 覆盖 Codex 模型 |
+| `yolo` | 否 | bool | `false` | 无需确认直接运行，跳过所有沙箱限制 |
+| `profile` | 否 | string | — | `~/.codex/config.toml` 中的配置文件名 |
+| `timeout_secs` | 否 | int | 600 | 超时时间，单位秒（最大 3600） |
+| `force_stdin` | 否 | bool | `false` | 强制通过 stdin 传递 prompt。对于超过 800 字符或包含特殊字符的 prompt 会自动触发 |
+
+### `web_search` — Grok Web 搜索
+
+| 参数 | 必填 | 类型 | 默认值 | 描述 |
+|------|------|------|--------|------|
+| `query` | **是** | string | — | 自然语言搜索查询。可包含主题、时间范围、语言或域名等约束 |
+| `platform` | 否 | string | — | 聚焦特定平台（如 `"Twitter"`、`"GitHub"`、`"Reddit"`） |
+| `min_results` | 否 | int | 3 | 最少返回结果数 |
+| `max_results` | 否 | int | 10 | 最多返回结果数 |
+
+### `web_fetch` — 抓取网页内容
+
+| 参数 | 必填 | 类型 | 默认值 | 描述 |
+|------|------|------|--------|------|
+| `url` | **是** | string | — | 有效的 HTTP/HTTPS 网址 |
+
+### `get_config_info` — 显示 Grok 配置
+
+无参数。返回当前 Grok 配置（API URL、模型、重试设置）并测试 API 连接。API Key 仅从环境变量读取，不会写入配置文件。
+
+## 安装
+
+### 从源码安装
 
 ```bash
 cargo install --path .
 ```
 
-### Build from source
+### 从源码编译
 
 ```bash
 git clone https://github.com/missdeer/aimcp.git
 cd aimcp
 cargo build --release
-# Binary at target/release/aimcp
+# 二进制文件位于 target/release/aimcp
 ```
 
-## Configuration
+## 配置
 
-### Prerequisites
+### 前置条件
 
-Install the CLI tools you want to use:
+安装你想使用的 CLI 工具：
 
-- **Gemini CLI** — `npm install -g @anthropic-ai/gemini-cli` or see [gemini-cli docs](https://github.com/google-gemini/gemini-cli)
-- **Codex CLI** — `npm install -g @openai/codex` or see [codex docs](https://github.com/openai/codex)
-- **Grok Search** — no binary needed, just set `GROK_API_URL` and `GROK_API_KEY`
+- **Gemini CLI** — `npm install -g @anthropic-ai/gemini-cli` 或参见 [gemini-cli 文档](https://github.com/google-gemini/gemini-cli)
+- **Codex CLI** — `npm install -g @openai/codex` 或参见 [codex 文档](https://github.com/openai/codex)
+- **Grok Search** — 无需安装二进制文件，只需设置 `GROK_API_URL` 和 `GROK_API_KEY`
 
-### Environment Variables
+### 环境变量
 
 #### Gemini
 
-| Variable | Description |
-|----------|-------------|
-| `GEMINI_BIN` | Override path to the gemini binary |
-| `GEMINI_DEFAULT_TIMEOUT` | Default timeout in seconds (default: 600) |
-| `GEMINI_FORCE_MODEL` | Force a specific model for all sessions |
+| 变量 | 描述 |
+|------|------|
+| `GEMINI_BIN` | 覆盖 gemini 二进制文件路径 |
+| `GEMINI_DEFAULT_TIMEOUT` | 默认超时时间，单位秒（默认：600） |
+| `GEMINI_FORCE_MODEL` | 强制所有会话使用指定模型 |
+| `GEMINI_INCLUDE_DIRS` | 逗号分隔的额外目录，传给 Gemini CLI 的 `--include-directories` |
 
 #### Codex
 
-| Variable | Description |
-|----------|-------------|
-| `CODEX_BIN` | Override path to the codex binary |
-| `CODEX_DEFAULT_TIMEOUT` | Default timeout in seconds (default: 600) |
-| `CODEX_ALLOW_DANGEROUS` | Allow `danger-full-access` sandbox mode (`true`/`false`) |
-| `CODEX_ALLOW_YOLO` | Allow yolo mode (`true`/`false`) |
-| `CODEX_ALLOW_SKIP_GIT_CHECK` | Allow skipping git repo check (`true`/`false`) |
+| 变量 | 描述 |
+|------|------|
+| `CODEX_BIN` | 覆盖 codex 二进制文件路径 |
+| `CODEX_DEFAULT_TIMEOUT` | 默认超时时间，单位秒（默认：600） |
+| `CODEX_ALLOW_DANGEROUS` | 允许 `danger-full-access` 沙箱模式（`true`/`false`） |
+| `CODEX_ALLOW_YOLO` | 允许 yolo 模式（`true`/`false`） |
+| `CODEX_ALLOW_SKIP_GIT_CHECK` | 允许跳过 Git 仓库检查（`true`/`false`） |
 
 #### Grok Search
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GROK_API_URL` | **Yes** | Grok API endpoint (e.g., `https://api.x.ai/v1`) |
-| `GROK_API_KEY` | **Yes** | Grok API key |
-| `GROK_MODEL` | No | Override default model (default: `grok-4-fast`) |
-| `GROK_DEBUG` | No | Enable debug logging (`true`/`false`) |
-| `GROK_RETRY_MAX_ATTEMPTS` | No | Max retry attempts (default: 3) |
-| `GROK_RETRY_MULTIPLIER` | No | Backoff multiplier (default: 1.0) |
-| `GROK_RETRY_MAX_WAIT` | No | Max retry wait in seconds (default: 10) |
+| 变量 | 必填 | 描述 |
+|------|------|------|
+| `GROK_API_URL` | **是** | Grok API 端点（如 `https://api.x.ai/v1`） |
+| `GROK_API_KEY` | **是** | Grok API 密钥 |
+| `GROK_MODEL` | 否 | 覆盖默认模型（默认：`grok-4-fast`） |
+| `GROK_DEBUG` | 否 | 启用调试日志（`true`/`false`） |
+| `GROK_RETRY_MAX_ATTEMPTS` | 否 | 最大重试次数（默认：3） |
+| `GROK_RETRY_MULTIPLIER` | 否 | 退避乘数（默认：1.0） |
+| `GROK_RETRY_MAX_WAIT` | 否 | 最大重试等待时间，单位秒（默认：10） |
 
-## MCP Client Configuration
+## MCP 客户端配置
 
-### Generic
+### 通用配置
 
 ```json
 {
@@ -99,7 +158,7 @@ Install the CLI tools you want to use:
 
 ### Windsurf / Cursor / Claude Desktop
 
-Add to your MCP settings file:
+添加到 MCP 配置文件：
 
 ```json
 {
@@ -115,9 +174,29 @@ Add to your MCP settings file:
 }
 ```
 
-## Startup Output
+## Gemini 工作区访问
 
-On startup, aimcp logs tool detection results to stderr:
+Gemini CLI 将文件访问限制在其工作目录内。当 MCP 宿主（如 Windsurf）设置了自定义 CWD 时，Gemini 可能无法访问项目文件。
+
+**aimcp 自动处理此问题**：初始化时，它通过 MCP `roots/list` 协议请求客户端的工作区根目录，并将其作为 `--include-directories` 传递给 Gemini CLI。
+
+如果你的 MCP 客户端不支持 `roots/list`，可设置 `GEMINI_INCLUDE_DIRS` 作为备选方案：
+
+```json
+{
+  "mcpServers": {
+    "aimcp": {
+      "env": {
+        "GEMINI_INCLUDE_DIRS": "D:/projects/myapp,D:/projects/other"
+      }
+    }
+  }
+}
+```
+
+## 启动输出
+
+启动时，aimcp 会将工具检测结果输出到 stderr：
 
 ```
 [aimcp] Starting...
@@ -127,28 +206,28 @@ On startup, aimcp logs tool detection results to stderr:
   Grok:    ✓ (API key configured)
 ```
 
-## Architecture
+## 架构
 
 ```
 aimcp/src/
-├── main.rs           # Entry point: clap + UnifiedServer + AdaptiveStdio
-├── lib.rs            # Module declarations
-├── server.rs         # UnifiedServer: all tools + runtime availability checks
-├── transport.rs      # AdaptiveStdio (JSONL/LSP auto-detection)
-├── detection.rs      # Runtime tool availability detection
-├── shared.rs         # Shared utilities (Job Object, timeouts, find_binary)
+├── main.rs           # 入口：clap + UnifiedServer + AdaptiveStdio
+├── lib.rs            # 模块声明
+├── server.rs         # UnifiedServer：所有工具 + 运行时可用性检查
+├── transport.rs      # AdaptiveStdio（JSONL/LSP 自动检测）
+├── detection.rs      # 运行时工具可用性检测
+├── shared.rs         # 共享工具（Job Object、超时常量、find_binary）
 └── tools/
     ├── mod.rs
-    ├── gemini.rs     # Gemini CLI wrapper
-    ├── codex.rs      # Codex CLI wrapper with security policies
+    ├── gemini.rs     # Gemini CLI 包装器
+    ├── codex.rs      # Codex CLI 包装器（含安全策略）
     └── grok/
         ├── mod.rs
-        ├── config.rs     # Config singleton + env vars + persistence
-        ├── prompts.rs    # Search/fetch prompt constants
-        ├── provider.rs   # Grok API client with SSE streaming + retry
-        └── tools.rs      # web_search, web_fetch, get_config_info, switch_model
+        ├── config.rs     # 配置单例 + 环境变量 + 持久化
+        ├── prompts.rs    # 搜索/抓取 prompt 常量
+        ├── provider.rs   # Grok API 客户端（SSE 流式 + 重试）
+        └── tools.rs      # web_search、web_fetch、get_config_info、switch_model
 ```
 
-## License
+## 许可证
 
 GPL-3.0-or-later

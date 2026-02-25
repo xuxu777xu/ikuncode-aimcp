@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -19,6 +20,7 @@ const TYPE_MESSAGE: &str = "message";
 const ROLE_ASSISTANT: &str = "assistant";
 const ENV_DEFAULT_TIMEOUT: &str = "GEMINI_DEFAULT_TIMEOUT";
 const ENV_FORCE_MODEL: &str = "GEMINI_FORCE_MODEL";
+const ENV_INCLUDE_DIRS: &str = "GEMINI_INCLUDE_DIRS";
 const MAX_MESSAGES_LIMIT: usize = 10000; // Maximum number of messages to store
 const MAX_NON_JSON_LINES: usize = 1000; // Maximum non-JSON lines to store
 const MAX_STDERR_BYTES: usize = 100_000; // Maximum stderr output to capture (100KB)
@@ -48,6 +50,7 @@ pub struct Options {
     pub return_all_messages: bool,
     pub model: Option<String>,
     pub timeout_secs: Option<u64>,
+    pub include_directories: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -172,6 +175,21 @@ fn build_command(opts: &Options) -> Command {
 
     if let Some(ref session_id) = opts.session_id {
         cmd.args(["--resume", session_id]);
+    }
+
+    // Collect include directories from Options and GEMINI_INCLUDE_DIRS env var
+    let mut include_dirs: Vec<PathBuf> = opts.include_directories.clone();
+    if let Ok(env_dirs) = std::env::var(ENV_INCLUDE_DIRS) {
+        for dir in env_dirs.split(',') {
+            let trimmed = dir.trim();
+            if !trimmed.is_empty() {
+                include_dirs.push(PathBuf::from(trimmed));
+            }
+        }
+    }
+    for dir in &include_dirs {
+        cmd.arg("--include-directories");
+        cmd.arg(dir.as_os_str());
     }
 
     // Configure process: stdin is piped so we can write the prompt
@@ -424,6 +442,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: None,
+            include_directories: vec![],
         };
 
         assert_eq!(opts.prompt, "test prompt");
@@ -439,6 +458,7 @@ mod tests {
             return_all_messages: true,
             model: Some("gemini-pro".to_string()),
             timeout_secs: Some(300),
+            include_directories: vec![],
         };
 
         assert_eq!(opts.session_id, Some("test-session-123".to_string()));
@@ -515,6 +535,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: None,
+            include_directories: vec![],
         };
 
         let cmd = build_command(&opts);
@@ -548,6 +569,7 @@ mod tests {
             return_all_messages: true,
             model: Some("gemini-pro".to_string()),
             timeout_secs: Some(120),
+            include_directories: vec![],
         };
 
         let cmd = build_command(&opts);
@@ -574,6 +596,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: None,
+            include_directories: vec![],
         };
 
         let cmd = build_command(&opts);
@@ -695,6 +718,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: Some(0), // Invalid: below minimum
+            include_directories: vec![],
         };
 
         // We can't actually run the command, but we can verify the validation logic
@@ -717,6 +741,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: Some(3601), // Invalid: above maximum
+            include_directories: vec![],
         };
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -737,6 +762,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: Some(1), // Valid: minimum
+            include_directories: vec![],
         };
 
         // This will fail because gemini CLI doesn't exist, but it should pass validation
@@ -758,6 +784,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: Some(3600), // Valid: maximum
+            include_directories: vec![],
         };
 
         let result = runtime.block_on(run(opts_max));
@@ -813,6 +840,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: None,
+            include_directories: vec![],
         };
         let cmd = build_command(&opts_no_model);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -830,6 +858,7 @@ mod tests {
             return_all_messages: false,
             model: None,
             timeout_secs: None,
+            include_directories: vec![],
         };
         let cmd = build_command(&opts_with_env);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -850,6 +879,7 @@ mod tests {
             return_all_messages: false,
             model: Some("gemini-pro".to_string()),
             timeout_secs: None,
+            include_directories: vec![],
         };
         let cmd = build_command(&opts_explicit);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -871,6 +901,7 @@ mod tests {
             return_all_messages: false,
             model: Some("   ".to_string()),
             timeout_secs: None,
+            include_directories: vec![],
         };
         let cmd = build_command(&opts_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -887,6 +918,7 @@ mod tests {
             return_all_messages: false,
             model: Some("".to_string()),
             timeout_secs: None,
+            include_directories: vec![],
         };
         let cmd = build_command(&opts_empty);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -903,6 +935,7 @@ mod tests {
             return_all_messages: false,
             model: Some("  gemini-ultra  ".to_string()),
             timeout_secs: None,
+            include_directories: vec![],
         };
         let cmd = build_command(&opts_with_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();

@@ -6,11 +6,15 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
+    service::NotificationContext,
+    RoleServer,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::shared::{DEFAULT_TIMEOUT_SECS, MAX_TIMEOUT_SECS, MIN_TIMEOUT_SECS};
 
@@ -180,13 +184,6 @@ pub struct WebSearchArgs {
 pub struct WebFetchArgs {
     /// A valid HTTP/HTTPS web address pointing to the target page
     pub url: String,
-}
-
-/// Input parameters for switch_model tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SwitchModelArgs {
-    /// The model ID to switch to (e.g., "grok-4-fast", "grok-2-latest")
-    pub model: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +390,28 @@ fn apply_security_restrictions(
 }
 
 // ---------------------------------------------------------------------------
+// URI helpers
+// ---------------------------------------------------------------------------
+
+/// Convert a `file://` URI to a local [`PathBuf`].
+///
+/// Handles both Unix (`file:///home/user`) and Windows (`file:///D:/path`)
+/// forms.  Returns `None` for non-file URIs or malformed strings.
+fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
+    let path_str = uri.strip_prefix("file://")?;
+    // On Windows, file:///D:/foo → strip the leading '/' before the drive letter
+    #[cfg(windows)]
+    let path_str = path_str
+        .strip_prefix('/')
+        .filter(|s| s.chars().nth(1) == Some(':'))
+        .unwrap_or(path_str);
+    if path_str.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(path_str))
+}
+
+// ---------------------------------------------------------------------------
 // UnifiedServer
 // ---------------------------------------------------------------------------
 
@@ -400,6 +419,9 @@ fn apply_security_restrictions(
 pub struct UnifiedServer {
     tool_router: ToolRouter<UnifiedServer>,
     capabilities: Capabilities,
+    /// MCP client workspace roots, populated during on_initialized via roots/list request.
+    /// Passed to Gemini CLI as --include-directories to allow file access beyond CWD.
+    roots: Arc<RwLock<Vec<PathBuf>>>,
 }
 
 impl UnifiedServer {
@@ -407,6 +429,7 @@ impl UnifiedServer {
         Self {
             tool_router: Self::tool_router(),
             capabilities,
+            roots: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }
@@ -472,6 +495,9 @@ impl UnifiedServer {
         let session_id = args.session_id.filter(|s| !s.is_empty());
         let model = args.model.filter(|m| !m.trim().is_empty());
 
+        // Read MCP client roots to pass as --include-directories to Gemini CLI
+        let include_directories = self.roots.read().await.clone();
+
         let opts = gemini::Options {
             prompt: args.prompt,
             sandbox: args.sandbox,
@@ -479,6 +505,7 @@ impl UnifiedServer {
             return_all_messages: args.return_all_messages,
             model,
             timeout_secs: args.timeout_secs,
+            include_directories,
         };
 
         let result = match gemini::run(opts).await {
@@ -762,34 +789,42 @@ impl UnifiedServer {
         }
     }
 
-    /// Switches the default Grok model used for search and fetch operations, and persists the setting.
-    #[tool(
-        name = "switch_model",
-        description = "Switches the default Grok model used for search and fetch operations, and persists the setting to ~/.config/grok-search/config.json."
-    )]
-    async fn switch_model(
-        &self,
-        Parameters(args): Parameters<SwitchModelArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        if args.model.trim().is_empty() {
-            return Err(McpError::invalid_params(
-                "model is required and must be a non-empty string",
-                None,
-            ));
-        }
-
-        match grok::tools::switch_model(&args.model).await {
-            Ok(result) => Ok(CallToolResult::success(vec![Content::text(result)])),
-            Err(e) => Err(McpError::internal_error(
-                format!("Failed to switch model: {}", e),
-                None,
-            )),
-        }
-    }
 }
 
 #[tool_handler]
 impl ServerHandler for UnifiedServer {
+    async fn on_initialized(
+        &self,
+        context: NotificationContext<RoleServer>,
+    ) {
+        // Request workspace roots from the MCP client.
+        // These are passed to Gemini CLI as --include-directories so it can
+        // access files outside its inherited CWD (which MCP hosts may set to
+        // an internal directory like F:\Windsurf).
+        match context.peer.list_roots().await {
+            Ok(roots_result) => {
+                let dirs: Vec<PathBuf> = roots_result
+                    .roots
+                    .iter()
+                    .filter_map(|root| file_uri_to_path(&root.uri))
+                    .collect();
+                if !dirs.is_empty() {
+                    eprintln!(
+                        "aimcp: received {} workspace root(s) from MCP client",
+                        dirs.len()
+                    );
+                    *self.roots.write().await = dirs;
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "aimcp: failed to list roots from MCP client (non-fatal): {}",
+                    e
+                );
+            }
+        }
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
@@ -799,8 +834,7 @@ impl ServerHandler for UnifiedServer {
                 "Unified AI MCP server providing gemini, codex, and grok search tools. \
                  Use 'gemini' for AI-driven tasks via Gemini CLI, 'codex' for AI-assisted coding \
                  via Codex CLI, 'web_search' for web searches, 'web_fetch' for fetching web content, \
-                 'get_config_info' for configuration status, and 'switch_model' for changing the \
-                 Grok search model."
+                 and 'get_config_info' for configuration status."
                     .to_string(),
             ),
         }
@@ -874,14 +908,6 @@ mod tests {
 
         let args: WebFetchArgs = serde_json::from_str(json).unwrap();
         assert_eq!(args.url, "https://example.com");
-    }
-
-    #[test]
-    fn test_switch_model_args_deserialization() {
-        let json = r#"{"model": "grok-4-fast"}"#;
-
-        let args: SwitchModelArgs = serde_json::from_str(json).unwrap();
-        assert_eq!(args.model, "grok-4-fast");
     }
 
     #[test]
@@ -1031,6 +1057,38 @@ mod tests {
         assert!(output.success);
         assert_eq!(output.session_id, "sess-1");
         assert!(output.all_messages.is_none());
+    }
+
+    #[test]
+    fn test_file_uri_to_path_windows() {
+        // Windows-style file URI
+        let path = file_uri_to_path("file:///D:/Desk/ai-tools/aimcp");
+        assert!(path.is_some());
+        #[cfg(windows)]
+        assert_eq!(path.unwrap(), PathBuf::from("D:/Desk/ai-tools/aimcp"));
+        #[cfg(not(windows))]
+        assert_eq!(path.unwrap(), PathBuf::from("/D:/Desk/ai-tools/aimcp"));
+    }
+
+    #[test]
+    fn test_file_uri_to_path_unix() {
+        let path = file_uri_to_path("file:///home/user/project");
+        assert!(path.is_some());
+        // On all platforms, /home/user/project is preserved
+        let p = path.unwrap();
+        assert!(p.to_string_lossy().contains("home"));
+    }
+
+    #[test]
+    fn test_file_uri_to_path_non_file_uri() {
+        assert!(file_uri_to_path("https://example.com").is_none());
+        assert!(file_uri_to_path("").is_none());
+        assert!(file_uri_to_path("not-a-uri").is_none());
+    }
+
+    #[test]
+    fn test_file_uri_to_path_empty_path() {
+        assert!(file_uri_to_path("file://").is_none());
     }
 
     #[test]

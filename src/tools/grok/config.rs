@@ -1,17 +1,9 @@
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
 const DEFAULT_MODEL: &str = "grok-4-fast";
 
 static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-struct ConfigFile {
-    #[serde(default)]
-    model: Option<String>,
-}
 
 pub struct Config {
     cached_model: Option<String>,
@@ -29,42 +21,6 @@ impl Config {
         CONFIG.get_or_init(|| Mutex::new(Config::new()))
     }
 
-    /// Path to the config file: ~/.config/grok-search/config.json
-    pub fn config_file_path() -> PathBuf {
-        let config_dir = if cfg!(target_os = "windows") {
-            dirs::config_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("grok-search")
-        } else {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".config")
-                .join("grok-search")
-        };
-        let _ = std::fs::create_dir_all(&config_dir);
-        config_dir.join("config.json")
-    }
-
-    fn load_config_file() -> ConfigFile {
-        let path = Self::config_file_path();
-        if !path.exists() {
-            return ConfigFile::default();
-        }
-        match std::fs::read_to_string(&path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-            Err(_) => ConfigFile::default(),
-        }
-    }
-
-    fn save_config_file(config_data: &ConfigFile) -> Result<(), String> {
-        let path = Self::config_file_path();
-        let content = serde_json::to_string_pretty(config_data)
-            .map_err(|e| format!("Failed to serialize config: {e}"))?;
-        std::fs::write(&path, content)
-            .map_err(|e| format!("Failed to save config file: {e}"))?;
-        Ok(())
-    }
-
     /// Read GROK_API_URL from environment
     pub fn grok_api_url() -> Result<String, String> {
         std::env::var("GROK_API_URL").map_err(|_| {
@@ -79,13 +35,9 @@ impl Config {
         })
     }
 
-    /// Get the current model: env > config file > default
+    /// Get the current model: env > cached > default
     pub fn grok_model(&mut self) -> String {
-        if let Some(ref cached) = self.cached_model {
-            return cached.clone();
-        }
-
-        // Check env override first
+        // Check env override first (always takes priority)
         if let Ok(env_model) = std::env::var("GROK_MODEL") {
             let env_model = env_model.trim().to_string();
             if !env_model.is_empty() {
@@ -94,23 +46,12 @@ impl Config {
             }
         }
 
-        let config_data = Self::load_config_file();
-        if let Some(file_model) = config_data.model {
-            self.cached_model = Some(file_model.clone());
-            return file_model;
+        if let Some(ref cached) = self.cached_model {
+            return cached.clone();
         }
 
         self.cached_model = Some(DEFAULT_MODEL.to_string());
         DEFAULT_MODEL.to_string()
-    }
-
-    /// Set the model and persist to config file
-    pub fn set_model(&mut self, model: &str) -> Result<(), String> {
-        let mut config_data = Self::load_config_file();
-        config_data.model = Some(model.to_string());
-        Self::save_config_file(&config_data)?;
-        self.cached_model = Some(model.to_string());
-        Ok(())
     }
 
     /// Check if debug mode is enabled
@@ -145,29 +86,17 @@ impl Config {
     }
 }
 
-/// Mask API key for display: show first/last 4 chars
-pub fn mask_api_key(key: &str) -> String {
-    if key.len() <= 8 {
-        return "***".to_string();
-    }
-    format!(
-        "{}{}{}",
-        &key[..4],
-        "*".repeat(key.len() - 8),
-        &key[key.len() - 4..]
-    )
-}
-
-/// Get masked config info as a JSON value
+/// Get config info as a JSON value (API key is NOT included)
 pub fn get_config_info() -> serde_json::Value {
-    let (api_url, api_key_masked, config_status) = match (Config::grok_api_url(), Config::grok_api_key()) {
-        (Ok(url), Ok(key)) => {
-            let masked = mask_api_key(&key);
-            (url, masked, "✅ Configuration complete".to_string())
+    let (api_url, config_status) = match Config::grok_api_url() {
+        Ok(url) => {
+            if Config::grok_api_key().is_ok() {
+                (url, "✅ Configuration complete".to_string())
+            } else {
+                (url, "❌ GROK_API_KEY not set".to_string())
+            }
         }
-        (Err(e), _) | (_, Err(e)) => {
-            ("Not configured".to_string(), "Not configured".to_string(), format!("❌ Configuration error: {e}"))
-        }
+        Err(e) => ("Not configured".to_string(), format!("❌ Configuration error: {e}")),
     };
 
     let model = {
@@ -178,7 +107,6 @@ pub fn get_config_info() -> serde_json::Value {
 
     serde_json::json!({
         "GROK_API_URL": api_url,
-        "GROK_API_KEY": api_key_masked,
         "GROK_MODEL": model,
         "GROK_DEBUG": Config::debug_enabled(),
         "config_status": config_status
@@ -188,23 +116,6 @@ pub fn get_config_info() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_mask_api_key_short() {
-        assert_eq!(mask_api_key("1234"), "***");
-        assert_eq!(mask_api_key(""), "***");
-        assert_eq!(mask_api_key("12345678"), "***");
-    }
-
-    #[test]
-    fn test_mask_api_key_normal() {
-        assert_eq!(mask_api_key("abcd1234efgh5678"), "abcd********5678");
-    }
-
-    #[test]
-    fn test_mask_api_key_nine_chars() {
-        assert_eq!(mask_api_key("123456789"), "1234*6789");
-    }
 
     #[test]
     fn test_default_model() {
@@ -228,10 +139,4 @@ mod tests {
         assert_eq!(Config::retry_max_wait(), 10);
     }
 
-    #[test]
-    fn test_config_file_path_is_valid() {
-        let path = Config::config_file_path();
-        assert!(path.to_string_lossy().contains("grok-search"));
-        assert!(path.to_string_lossy().ends_with("config.json"));
-    }
 }

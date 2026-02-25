@@ -83,39 +83,6 @@ pub async fn get_config_info() -> Result<String> {
         .map_err(|e| anyhow::anyhow!("Failed to serialize config info: {}", e))
 }
 
-/// Switch the default model and persist the setting
-pub async fn switch_model(model: &str) -> Result<String> {
-    let previous_model = {
-        let cfg = Config::global();
-        let mut cfg = cfg.lock().unwrap();
-        cfg.grok_model()
-    };
-
-    {
-        let cfg = Config::global();
-        let mut cfg = cfg.lock().unwrap();
-        cfg.set_model(model)
-            .map_err(|e| anyhow::anyhow!("Failed to switch model: {}", e))?;
-    }
-
-    let current_model = {
-        let cfg = Config::global();
-        let mut cfg = cfg.lock().unwrap();
-        cfg.grok_model()
-    };
-
-    let result = serde_json::json!({
-        "status": "✅ Success",
-        "previous_model": previous_model,
-        "current_model": current_model,
-        "message": format!("Model switched from {} to {}", previous_model, current_model),
-        "config_file": Config::config_file_path().to_string_lossy(),
-    });
-
-    serde_json::to_string_pretty(&result)
-        .map_err(|e| anyhow::anyhow!("Failed to serialize result: {}", e))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,15 +124,4 @@ mod tests {
         assert!(info.contains("connection_test"));
     }
 
-    #[test]
-    fn test_switch_model_persists() {
-        // This test uses the config singleton, ensure clean state
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(switch_model("test-model-123"));
-        // May fail if config dir is not writable, which is acceptable in CI
-        if let Ok(json_str) = result {
-            assert!(json_str.contains("test-model-123"));
-            assert!(json_str.contains("Success"));
-        }
-    }
 }
