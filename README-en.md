@@ -130,6 +130,9 @@ Install the CLI tools you want to use:
 
 | Variable | Description |
 |----------|-------------|
+| `GEMINI_API_KEY` | API key for `gemini` tool, overrides `GOOGLE_API_KEY` on child process |
+| `GEMINI_IMAGE_API_KEY` | API key for `gemini_image` tool, can differ from `GEMINI_API_KEY` |
+| `GEMINI_API_URL` | Gemini API endpoint URL (shared by both tools), overrides `GOOGLE_GEMINI_BASE_URL` on child process |
 | `GEMINI_BIN` | Override path to the gemini binary |
 | `GEMINI_DEFAULT_TIMEOUT` | Default timeout in seconds (default: 600) |
 | `GEMINI_FORCE_MODEL` | Default model for regular tasks (used when `gemini` tool has no model specified) |
@@ -168,10 +171,13 @@ Install the CLI tools you want to use:
     "aimcp": {
       "command": "aimcp",
       "env": {
-        "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "your-key",
+        "GEMINI_API_KEY": "your-gemini-api-key",
+        "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
+        "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
         "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
-        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
+        "GROK_API_URL": "https://api.x.ai/v1",
+        "GROK_API_KEY": "your-key"
       }
     }
   }
@@ -188,10 +194,13 @@ Add to your MCP settings file:
     "aimcp": {
       "command": "aimcp",
       "env": {
-        "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "xai-...",
+        "GEMINI_API_KEY": "your-gemini-api-key",
+        "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
+        "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
         "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
-        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
+        "GROK_API_URL": "https://api.x.ai/v1",
+        "GROK_API_KEY": "xai-..."
       }
     }
   }

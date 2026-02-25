@@ -130,6 +130,9 @@ cargo build --release
 
 | 变量 | 描述 |
 |------|------|
+| `GEMINI_API_KEY` | Gemini CLI 的 API 密钥（`gemini` 工具使用），设置后会覆盖子进程的 `GOOGLE_API_KEY` |
+| `GEMINI_IMAGE_API_KEY` | 图像生成的 API 密钥（`gemini_image` 工具使用），可与 `GEMINI_API_KEY` 不同 |
+| `GEMINI_API_URL` | Gemini API 端点 URL（两个工具共用），设置后会覆盖子进程的 `GOOGLE_GEMINI_BASE_URL` |
 | `GEMINI_BIN` | 覆盖 gemini 二进制文件路径 |
 | `GEMINI_DEFAULT_TIMEOUT` | 默认超时时间，单位秒（默认：600） |
 | `GEMINI_FORCE_MODEL` | 常规任务的默认模型（当 `gemini` 工具未指定 model 时使用） |
@@ -168,10 +171,13 @@ cargo build --release
     "aimcp": {
       "command": "aimcp",
       "env": {
-        "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "your-key",
+        "GEMINI_API_KEY": "your-gemini-api-key",
+        "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
+        "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
         "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
-        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
+        "GROK_API_URL": "https://api.x.ai/v1",
+        "GROK_API_KEY": "your-key"
       }
     }
   }
@@ -188,10 +194,13 @@ cargo build --release
     "aimcp": {
       "command": "aimcp",
       "env": {
-        "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "xai-...",
+        "GEMINI_API_KEY": "your-gemini-api-key",
+        "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
+        "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
         "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
-        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
+        "GROK_API_URL": "https://api.x.ai/v1",
+        "GROK_API_KEY": "xai-..."
       }
     }
   }
