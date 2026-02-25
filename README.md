@@ -99,17 +99,43 @@
 
 ## 安装
 
-### 从源码安装
+### 方式一：下载预编译二进制（推荐）
+
+从 [GitHub Releases](https://github.com/xuxu777xu/ai-cli-mcp/releases) 下载对应平台的二进制文件：
+
+| 平台 | 文件 |
+|------|------|
+| Windows x64 | `aimcp-x86_64-pc-windows-msvc.exe` |
+| macOS Apple Silicon | `aimcp-aarch64-apple-darwin` |
+| macOS Intel | `aimcp-x86_64-apple-darwin` |
+| Linux x64 | `aimcp-x86_64-unknown-linux-gnu` |
+
+下载后放到 `PATH` 目录中即可使用。macOS / Linux 需要添加执行权限：
 
 ```bash
-cargo install --path .
+chmod +x aimcp-*
+mv aimcp-* /usr/local/bin/aimcp
 ```
 
-### 从源码编译
+### 方式二：npm 安装
 
 ```bash
-git clone https://github.com/missdeer/aimcp.git
-cd aimcp
+npm install -g ai-cli-mcp
+```
+
+安装时自动从 GitHub Releases 下载预编译二进制。若下载失败则回退到 `cargo install`（需要 Rust 工具链）。
+
+### 方式三：cargo 安装
+
+```bash
+cargo install --git https://github.com/xuxu777xu/ai-cli-mcp.git
+```
+
+### 方式四：从源码编译
+
+```bash
+git clone https://github.com/xuxu777xu/ai-cli-mcp.git
+cd ai-cli-mcp
 cargo build --release
 # 二进制文件位于 target/release/aimcp
 ```
@@ -118,11 +144,11 @@ cargo build --release
 
 ### 前置条件
 
-安装你想使用的 CLI 工具：
+根据你需要的工具，安装对应的 CLI：
 
-- **Gemini CLI** — `npm install -g @anthropic-ai/gemini-cli` 或参见 [gemini-cli 文档](https://github.com/google-gemini/gemini-cli)
+- **Gemini CLI** — `npm install -g @google/gemini-cli` 或参见 [gemini-cli 文档](https://github.com/google-gemini/gemini-cli)
 - **Codex CLI** — `npm install -g @openai/codex` 或参见 [codex 文档](https://github.com/openai/codex)
-- **Grok Search** — 无需安装二进制文件，只需设置 `GROK_API_URL` 和 `GROK_API_KEY`
+- **Grok Search** — 无需安装，只需设置 `GROK_API_URL` 和 `GROK_API_KEY` 环境变量
 
 ### 环境变量
 

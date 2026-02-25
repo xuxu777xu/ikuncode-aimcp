@@ -99,17 +99,43 @@ No parameters. Returns current Grok configuration (API URL, model, retry setting
 
 ## Installation
 
-### From source
+### Option 1: Download Pre-built Binary (Recommended)
+
+Download the binary for your platform from [GitHub Releases](https://github.com/xuxu777xu/ai-cli-mcp/releases):
+
+| Platform | File |
+|----------|------|
+| Windows x64 | `aimcp-x86_64-pc-windows-msvc.exe` |
+| macOS Apple Silicon | `aimcp-aarch64-apple-darwin` |
+| macOS Intel | `aimcp-x86_64-apple-darwin` |
+| Linux x64 | `aimcp-x86_64-unknown-linux-gnu` |
+
+Place the binary in a directory on your `PATH`. On macOS / Linux, add execute permission:
 
 ```bash
-cargo install --path .
+chmod +x aimcp-*
+mv aimcp-* /usr/local/bin/aimcp
 ```
 
-### Build from source
+### Option 2: npm Install
 
 ```bash
-git clone https://github.com/missdeer/aimcp.git
-cd aimcp
+npm install -g ai-cli-mcp
+```
+
+Automatically downloads the pre-built binary from GitHub Releases. Falls back to `cargo install` if download fails (requires Rust toolchain).
+
+### Option 3: cargo Install
+
+```bash
+cargo install --git https://github.com/xuxu777xu/ai-cli-mcp.git
+```
+
+### Option 4: Build from Source
+
+```bash
+git clone https://github.com/xuxu777xu/ai-cli-mcp.git
+cd ai-cli-mcp
 cargo build --release
 # Binary at target/release/aimcp
 ```
@@ -120,7 +146,7 @@ cargo build --release
 
 Install the CLI tools you want to use:
 
-- **Gemini CLI** — `npm install -g @anthropic-ai/gemini-cli` or see [gemini-cli docs](https://github.com/google-gemini/gemini-cli)
+- **Gemini CLI** — `npm install -g @google/gemini-cli` or see [gemini-cli docs](https://github.com/google-gemini/gemini-cli)
 - **Codex CLI** — `npm install -g @openai/codex` or see [codex docs](https://github.com/openai/codex)
 - **Grok Search** — no binary needed, just set `GROK_API_URL` and `GROK_API_KEY`
 
