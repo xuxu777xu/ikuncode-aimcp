@@ -54,11 +54,24 @@ jobs:
         run: |
           tar czf ${{ matrix.artifact }} -C target/${{ matrix.target }}/release ${{ matrix.binary }}
 
-      - name: Upload artifact
+      - name: Copy raw binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "aimcp-${{ matrix.target }}.exe"
+
+      - name: Copy raw binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "aimcp-${{ matrix.target }}"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            aimcp-${{ matrix.target }}*
 
   release:
     needs: build
