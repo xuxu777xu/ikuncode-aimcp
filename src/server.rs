@@ -801,8 +801,11 @@ impl ServerHandler for UnifiedServer {
         // These are passed to Gemini CLI as --include-directories so it can
         // access files outside its inherited CWD (which MCP hosts may set to
         // an internal directory like F:\Windsurf).
-        match context.peer.list_roots().await {
-            Ok(roots_result) => {
+        // Use a short timeout — some clients don't support roots/list and
+        // the call would block indefinitely without one.
+        let roots_future = context.peer.list_roots();
+        match tokio::time::timeout(std::time::Duration::from_secs(3), roots_future).await {
+            Ok(Ok(roots_result)) => {
                 let dirs: Vec<PathBuf> = roots_result
                     .roots
                     .iter()
@@ -816,10 +819,15 @@ impl ServerHandler for UnifiedServer {
                     *self.roots.write().await = dirs;
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 eprintln!(
                     "aimcp: failed to list roots from MCP client (non-fatal): {}",
                     e
+                );
+            }
+            Err(_) => {
+                eprintln!(
+                    "aimcp: list_roots timed out (client may not support roots/list, non-fatal)"
                 );
             }
         }
