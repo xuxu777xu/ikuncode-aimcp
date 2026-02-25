@@ -120,7 +120,7 @@ mv aimcp-* /usr/local/bin/aimcp
 ### Option 2: npm Install
 
 ```bash
-npm install -g ai-cli-mcp
+npm install -g @xuxu7777xu/aimcp
 ```
 
 Automatically downloads the pre-built binary from GitHub Releases. Falls back to `cargo install` if download fails (requires Rust toolchain).

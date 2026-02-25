@@ -1,5 +1,5 @@
 {
-  "name": "ai-cli-mcp",
+  "name": "@xuxu7777xu/aimcp",
   "version": "0.1.0",
   "description": "Unified MCP server combining Gemini, Codex, and Grok Search",
   "license": "GPL-3.0-or-later",
@@ -24,5 +24,8 @@
   "files": [
     "bin/",
     "scripts/"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

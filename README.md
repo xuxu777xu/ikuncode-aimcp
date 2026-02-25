@@ -120,7 +120,7 @@ mv aimcp-* /usr/local/bin/aimcp
 ### 方式二：npm 安装
 
 ```bash
-npm install -g ai-cli-mcp
+npm install -g @xuxu7777xu/aimcp
 ```
 
 安装时自动从 GitHub Releases 下载预编译二进制。若下载失败则回退到 `cargo install`（需要 Rust 工具链）。
