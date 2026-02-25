@@ -1,22 +1,21 @@
 use crate::detection::Capabilities;
 use crate::tools::codex::{self, SandboxPolicy};
 use crate::tools::gemini;
+use crate::tools::gemini_image_api;
 use crate::tools::grok;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
-    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
+    schemars,
     service::NotificationContext,
-    RoleServer,
+    tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler,
 };
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::HashMap;
+use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::shared::{DEFAULT_TIMEOUT_SECS, MAX_TIMEOUT_SECS, MIN_TIMEOUT_SECS};
+use crate::shared::{MAX_TIMEOUT_SECS, MIN_TIMEOUT_SECS};
 
 // ---------------------------------------------------------------------------
 // PathBuf serde helpers (from codex-mcp-rs)
@@ -95,6 +94,31 @@ pub struct GeminiArgs {
     #[serde(default)]
     pub return_all_messages: bool,
     /// The model to use for the gemini session. If not specified, uses GEMINI_FORCE_MODEL
+    /// environment variable or the Gemini CLI default
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Timeout in seconds for gemini execution (1-3600). If not specified, uses GEMINI_DEFAULT_TIMEOUT
+    /// environment variable or falls back to 600 seconds (10 minutes).
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+}
+
+/// Input parameters for gemini_image tool (image generation via Gemini CLI)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GeminiImageArgs {
+    /// Instruction for the image generation task to send to gemini
+    #[serde(rename = "PROMPT")]
+    pub prompt: String,
+    /// Run in sandbox mode. Defaults to `False`
+    #[serde(default)]
+    pub sandbox: bool,
+    /// Resume the specified session of the gemini. If not provided or empty, starts a new session
+    #[serde(rename = "SESSION_ID", default)]
+    pub session_id: Option<String>,
+    /// Return all messages (e.g. reasoning, tool calls, etc.) from the gemini session. Set to `False` by default, only the agent's final reply message is returned
+    #[serde(default)]
+    pub return_all_messages: bool,
+    /// The model to use for image generation. If not specified, uses GEMINI_IMAGE_MODEL
     /// environment variable or the Gemini CLI default
     #[serde(default)]
     pub model: Option<String>,
@@ -190,113 +214,19 @@ pub struct WebFetchArgs {
 // Codex security configuration (ported from codex-mcp-rs)
 // ---------------------------------------------------------------------------
 
-struct SecurityConfig {
-    allow_danger_full_access: bool,
-    allow_yolo: bool,
-    allow_skip_git_check: bool,
-}
-
-fn resolve_env_bool(
-    key: &str,
-    env_val: Option<String>,
-    warnings: &mut Vec<String>,
-) -> Option<bool> {
-    env_val.and_then(|v| {
-        let normalized = v.trim().to_ascii_lowercase();
-        match normalized.as_str() {
-            "1" | "true" | "yes" | "y" | "on" | "t" | "enable" | "enabled" => Some(true),
-            "0" | "false" | "no" | "n" | "off" | "f" | "disable" | "disabled" => Some(false),
-            "" => None,
-            _ => {
-                warnings.push(format!(
-                    "Environment variable {} has unrecognized boolean value '{}'; defaulting to disabled.",
-                    key, v
-                ));
-                None
-            }
-        }
-    })
-}
-
-fn parse_env_bool(key: &str, warnings: &mut Vec<String>) -> Option<bool> {
-    resolve_env_bool(key, std::env::var(key).ok(), warnings)
-}
+type SecurityConfig = codex::SecurityConfig;
+type CodexOutput = codex::CodexOutput;
 
 fn get_security_config(warnings: &mut Vec<String>) -> SecurityConfig {
-    SecurityConfig {
-        allow_danger_full_access: parse_env_bool("CODEX_ALLOW_DANGEROUS", warnings)
-            .unwrap_or(false),
-        allow_yolo: parse_env_bool("CODEX_ALLOW_YOLO", warnings).unwrap_or(false),
-        allow_skip_git_check: parse_env_bool("CODEX_ALLOW_SKIP_GIT_CHECK", warnings)
-            .unwrap_or(false),
-    }
+    codex::get_security_config(warnings)
 }
 
 // ---------------------------------------------------------------------------
 // Codex timeout resolution (ported from codex-mcp-rs)
 // ---------------------------------------------------------------------------
 
-struct DefaultTimeoutResult {
-    value: u64,
-    warning: Option<String>,
-}
-
-fn resolve_timeout_from_env(
-    env_result: Result<String, std::env::VarError>,
-) -> DefaultTimeoutResult {
-    match env_result {
-        Ok(val) => {
-            let trimmed = val.trim();
-            if trimmed.is_empty() {
-                return DefaultTimeoutResult {
-                    value: DEFAULT_TIMEOUT_SECS,
-                    warning: None,
-                };
-            }
-            match trimmed.parse::<u64>() {
-                Ok(0) => DefaultTimeoutResult {
-                    value: DEFAULT_TIMEOUT_SECS,
-                    warning: Some(format!(
-                        "CODEX_DEFAULT_TIMEOUT=0 is invalid; using default of {} seconds",
-                        DEFAULT_TIMEOUT_SECS
-                    )),
-                },
-                Ok(secs) if secs > MAX_TIMEOUT_SECS => DefaultTimeoutResult {
-                    value: MAX_TIMEOUT_SECS,
-                    warning: Some(format!(
-                        "CODEX_DEFAULT_TIMEOUT={} exceeds maximum of {} seconds; capping to maximum",
-                        secs, MAX_TIMEOUT_SECS
-                    )),
-                },
-                Ok(secs) => DefaultTimeoutResult {
-                    value: secs,
-                    warning: None,
-                },
-                Err(_) => DefaultTimeoutResult {
-                    value: DEFAULT_TIMEOUT_SECS,
-                    warning: Some(format!(
-                        "CODEX_DEFAULT_TIMEOUT='{}' is not a valid number; using default of {} seconds",
-                        trimmed, DEFAULT_TIMEOUT_SECS
-                    )),
-                },
-            }
-        }
-        Err(std::env::VarError::NotUnicode(_)) => DefaultTimeoutResult {
-            value: DEFAULT_TIMEOUT_SECS,
-            warning: Some(format!(
-                "CODEX_DEFAULT_TIMEOUT contains invalid UTF-8; using default of {} seconds",
-                DEFAULT_TIMEOUT_SECS
-            )),
-        },
-        Err(std::env::VarError::NotPresent) => DefaultTimeoutResult {
-            value: DEFAULT_TIMEOUT_SECS,
-            warning: None,
-        },
-    }
-}
-
-fn get_default_timeout_with_warning() -> DefaultTimeoutResult {
-    resolve_timeout_from_env(std::env::var("CODEX_DEFAULT_TIMEOUT"))
+fn get_default_timeout_with_warning() -> codex::DefaultTimeoutResult {
+    codex::get_default_timeout_with_warning()
 }
 
 // ---------------------------------------------------------------------------
@@ -304,44 +234,14 @@ fn get_default_timeout_with_warning() -> DefaultTimeoutResult {
 // ---------------------------------------------------------------------------
 
 fn merge_warnings(
-    mut security_warnings: Vec<String>,
+    security_warnings: Vec<String>,
     result_warnings: Option<String>,
 ) -> Option<String> {
-    if let Some(w) = result_warnings {
-        security_warnings.push(w);
-    }
-    if security_warnings.is_empty() {
-        None
-    } else {
-        Some(security_warnings.join("\n"))
-    }
+    codex::merge_warnings(security_warnings, result_warnings)
 }
 
-fn attach_warnings(mut error_msg: String, warnings: Option<String>) -> String {
-    if let Some(w) = warnings {
-        if !w.is_empty() {
-            error_msg = format!("{error_msg}\nWarnings: {w}");
-        }
-    }
-    error_msg
-}
-
-#[derive(Debug, Serialize, schemars::JsonSchema)]
-struct CodexOutput {
-    success: bool,
-    #[serde(rename = "SESSION_ID")]
-    session_id: String,
-    agent_messages: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    agent_messages_truncated: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    all_messages: Option<Vec<HashMap<String, Value>>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    all_messages_truncated: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    warnings: Option<String>,
+fn attach_warnings(error_msg: String, warnings: Option<String>) -> String {
+    codex::attach_warnings(error_msg, warnings)
 }
 
 fn build_codex_output(
@@ -349,43 +249,25 @@ fn build_codex_output(
     return_all_messages: bool,
     warnings: Option<String>,
 ) -> CodexOutput {
-    CodexOutput {
-        success: result.success,
-        session_id: result.session_id.clone(),
-        agent_messages: result.agent_messages.clone(),
-        agent_messages_truncated: result.agent_messages_truncated.then_some(true),
-        all_messages: return_all_messages.then_some(result.all_messages.clone()),
-        all_messages_truncated: (return_all_messages && result.all_messages_truncated)
-            .then_some(true),
-        error: result.error.clone(),
-        warnings,
-    }
+    codex::build_codex_output(result, return_all_messages, warnings)
 }
 
 fn apply_security_restrictions(
     mut args: CodexArgs,
     security: &SecurityConfig,
 ) -> (CodexArgs, Vec<String>) {
-    let mut warnings = Vec::new();
-
-    if !security.allow_danger_full_access && args.sandbox == SandboxPolicy::DangerFullAccess {
-        warnings.push("Security warning: danger-full-access sandbox mode was downgraded to read-only. Set CODEX_ALLOW_DANGEROUS=true to enable.".to_string());
-        args.sandbox = SandboxPolicy::ReadOnly;
-    }
-
-    if !security.allow_yolo && args.yolo {
-        warnings.push(
-            "Security warning: yolo mode was disabled. Set CODEX_ALLOW_YOLO=true to enable."
-                .to_string(),
-        );
-        args.yolo = false;
-    }
-
-    if !security.allow_skip_git_check && args.skip_git_repo_check {
-        warnings.push("Security warning: skip_git_repo_check was disabled. Set CODEX_ALLOW_SKIP_GIT_CHECK=true to enable.".to_string());
-        args.skip_git_repo_check = false;
-    }
-
+    let mut sandbox = args.sandbox.clone();
+    let mut yolo = args.yolo;
+    let mut skip_git_repo_check = args.skip_git_repo_check;
+    let warnings = codex::apply_security_restrictions(
+        &mut sandbox,
+        &mut yolo,
+        &mut skip_git_repo_check,
+        security,
+    );
+    args.sandbox = sandbox;
+    args.yolo = yolo;
+    args.skip_git_repo_check = skip_git_repo_check;
     (args, warnings)
 }
 
@@ -430,6 +312,56 @@ impl UnifiedServer {
             tool_router: Self::tool_router(),
             capabilities,
             roots: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// Shared helper for running Gemini CLI and formatting the result.
+    /// Used by both `gemini` and `gemini_image` tools.
+    async fn run_gemini(
+        opts: gemini::Options,
+        return_all_messages: bool,
+    ) -> Result<CallToolResult, McpError> {
+        let result = match gemini::run(opts).await {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(McpError::internal_error(
+                    format!("Failed to execute gemini: {}", e),
+                    None,
+                ));
+            }
+        };
+
+        if result.success {
+            let mut response_text = format!(
+                "success: true\nSESSION_ID: {}\nagent_messages: {}",
+                result.session_id, result.agent_messages
+            );
+
+            if return_all_messages && !result.all_messages.is_empty() {
+                response_text.push_str(&format!(
+                    "\nall_messages: {} events captured",
+                    result.all_messages.len()
+                ));
+                if let Ok(json) = serde_json::to_string_pretty(&result.all_messages) {
+                    response_text.push_str(&format!("\n\nFull event log:\n{}", json));
+                }
+            }
+
+            Ok(CallToolResult::success(vec![Content::text(response_text)]))
+        } else {
+            let mut error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
+
+            if return_all_messages && !result.all_messages.is_empty() {
+                error_msg.push_str(&format!(
+                    "\n\nCaptured {} events before failure:",
+                    result.all_messages.len()
+                ));
+                if let Ok(json) = serde_json::to_string_pretty(&result.all_messages) {
+                    error_msg.push_str(&format!("\n{}", json));
+                }
+            }
+
+            Err(McpError::internal_error(error_msg, None))
         }
     }
 }
@@ -506,49 +438,87 @@ impl UnifiedServer {
             model,
             timeout_secs: args.timeout_secs,
             include_directories,
+            model_env_fallback: gemini::get_force_model(),
+            api_key: gemini::get_api_key(),
+            api_base_url: gemini::get_api_url(),
         };
 
-        let result = match gemini::run(opts).await {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(McpError::internal_error(
-                    format!("Failed to execute gemini: {}", e),
+        Self::run_gemini(opts, args.return_all_messages).await
+    }
+
+    /// Generates images using the Gemini API directly (not via CLI).
+    /// Returns the generated image(s) as base64-encoded content along with any text response.
+    ///
+    /// **Return structure:**
+    /// - Image content(s) as base64-encoded data with mime type
+    /// - Text description from the model (if any)
+    ///
+    /// **Required environment variables:**
+    /// - `GEMINI_IMAGE_API_KEY`: API key for image generation
+    /// - `GEMINI_API_URL`: Base URL for the Gemini API
+    /// - `GEMINI_IMAGE_MODEL`: Model name for image generation (e.g. "gemini-3-pro-image-preview")
+    #[tool(
+        name = "gemini_image",
+        description = "Invokes the Gemini CLI for image generation tasks, using a dedicated image generation model configured via GEMINI_IMAGE_MODEL environment variable."
+    )]
+    async fn gemini_image(
+        &self,
+        Parameters(args): Parameters<GeminiImageArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        if args.prompt.trim().is_empty() {
+            return Err(McpError::invalid_params(
+                "PROMPT is required and must be a non-empty, non-whitespace string",
+                None,
+            ));
+        }
+
+        let api_url = gemini::get_api_url().ok_or_else(|| {
+            McpError::internal_error(
+                "GEMINI_API_URL environment variable is not set",
+                None,
+            )
+        })?;
+
+        let api_key = gemini::get_image_api_key().ok_or_else(|| {
+            McpError::internal_error(
+                "GEMINI_IMAGE_API_KEY environment variable is not set",
+                None,
+            )
+        })?;
+
+        let model = args
+            .model
+            .filter(|m| !m.trim().is_empty())
+            .or_else(|| gemini::get_image_model())
+            .ok_or_else(|| {
+                McpError::internal_error(
+                    "No model specified and GEMINI_IMAGE_MODEL environment variable is not set",
                     None,
-                ));
-            }
-        };
+                )
+            })?;
 
-        if result.success {
-            let mut response_text = format!(
-                "success: true\nSESSION_ID: {}\nagent_messages: {}",
-                result.session_id, result.agent_messages
-            );
+        match gemini_image_api::generate_image(&api_url, &api_key, &model, &args.prompt).await {
+            Ok(result) => {
+                let mut contents: Vec<Content> = Vec::new();
 
-            if args.return_all_messages && !result.all_messages.is_empty() {
-                response_text.push_str(&format!(
-                    "\nall_messages: {} events captured",
-                    result.all_messages.len()
-                ));
-                if let Ok(json) = serde_json::to_string_pretty(&result.all_messages) {
-                    response_text.push_str(&format!("\n\nFull event log:\n{}", json));
+                for (data, mime_type) in &result.images {
+                    contents.push(Content::image(data.as_str(), mime_type.as_str()));
                 }
-            }
 
-            Ok(CallToolResult::success(vec![Content::text(response_text)]))
-        } else {
-            let mut error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
-
-            if args.return_all_messages && !result.all_messages.is_empty() {
-                error_msg.push_str(&format!(
-                    "\n\nCaptured {} events before failure:",
-                    result.all_messages.len()
-                ));
-                if let Ok(json) = serde_json::to_string_pretty(&result.all_messages) {
-                    error_msg.push_str(&format!("\n{}", json));
+                if let Some(ref text) = result.text {
+                    contents.push(Content::text(text));
                 }
-            }
 
-            Err(McpError::internal_error(error_msg, None))
+                if contents.is_empty() {
+                    contents.push(Content::text("Image generation completed but no content was returned."));
+                }
+
+                Ok(CallToolResult::success(contents))
+            }
+            Err(e) => Err(McpError::internal_error(
+                format!("Image generation failed: {}", e),
+                None,
+            )),
         }
     }
 
@@ -788,15 +758,11 @@ impl UnifiedServer {
             )),
         }
     }
-
 }
 
 #[tool_handler]
 impl ServerHandler for UnifiedServer {
-    async fn on_initialized(
-        &self,
-        context: NotificationContext<RoleServer>,
-    ) {
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         // Request workspace roots from the MCP client.
         // These are passed to Gemini CLI as --include-directories so it can
         // access files outside its inherited CWD (which MCP hosts may set to
@@ -921,26 +887,50 @@ mod tests {
     #[test]
     fn test_resolve_env_bool_truthy() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("K", Some("1".into()), &mut warnings), Some(true));
-        assert_eq!(resolve_env_bool("K", Some("true".into()), &mut warnings), Some(true));
-        assert_eq!(resolve_env_bool("K", Some("yes".into()), &mut warnings), Some(true));
-        assert_eq!(resolve_env_bool("K", Some("on".into()), &mut warnings), Some(true));
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("1".into()), &mut warnings),
+            Some(true)
+        );
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("true".into()), &mut warnings),
+            Some(true)
+        );
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("yes".into()), &mut warnings),
+            Some(true)
+        );
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("on".into()), &mut warnings),
+            Some(true)
+        );
         assert!(warnings.is_empty());
     }
 
     #[test]
     fn test_resolve_env_bool_falsy() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("K", Some("0".into()), &mut warnings), Some(false));
-        assert_eq!(resolve_env_bool("K", Some("false".into()), &mut warnings), Some(false));
-        assert_eq!(resolve_env_bool("K", Some("off".into()), &mut warnings), Some(false));
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("0".into()), &mut warnings),
+            Some(false)
+        );
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("false".into()), &mut warnings),
+            Some(false)
+        );
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("off".into()), &mut warnings),
+            Some(false)
+        );
         assert!(warnings.is_empty());
     }
 
     #[test]
     fn test_resolve_env_bool_invalid() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("TEST_KEY", Some("maybe".into()), &mut warnings), None);
+        assert_eq!(
+            codex::resolve_env_bool("TEST_KEY", Some("maybe".into()), &mut warnings),
+            None
+        );
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("TEST_KEY"));
     }
@@ -948,8 +938,11 @@ mod tests {
     #[test]
     fn test_resolve_env_bool_empty() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("K", Some("".into()), &mut warnings), None);
-        assert_eq!(resolve_env_bool("K", None, &mut warnings), None);
+        assert_eq!(
+            codex::resolve_env_bool("K", Some("".into()), &mut warnings),
+            None
+        );
+        assert_eq!(codex::resolve_env_bool("K", None, &mut warnings), None);
         assert!(warnings.is_empty());
     }
 
@@ -1008,21 +1001,21 @@ mod tests {
 
     #[test]
     fn test_resolve_timeout_default() {
-        let result = resolve_timeout_from_env(Err(std::env::VarError::NotPresent));
-        assert_eq!(result.value, DEFAULT_TIMEOUT_SECS);
+        let result = codex::resolve_timeout_from_env(Err(std::env::VarError::NotPresent));
+        assert_eq!(result.value, crate::shared::DEFAULT_TIMEOUT_SECS);
         assert!(result.warning.is_none());
     }
 
     #[test]
     fn test_resolve_timeout_valid() {
-        let result = resolve_timeout_from_env(Ok("1800".into()));
+        let result = codex::resolve_timeout_from_env(Ok("1800".into()));
         assert_eq!(result.value, 1800);
         assert!(result.warning.is_none());
     }
 
     #[test]
     fn test_resolve_timeout_caps_max() {
-        let result = resolve_timeout_from_env(Ok("9999".into()));
+        let result = codex::resolve_timeout_from_env(Ok("9999".into()));
         assert_eq!(result.value, MAX_TIMEOUT_SECS);
         assert!(result.warning.is_some());
         assert!(result.warning.unwrap().contains("exceeds maximum"));
@@ -1030,22 +1023,22 @@ mod tests {
 
     #[test]
     fn test_resolve_timeout_rejects_zero() {
-        let result = resolve_timeout_from_env(Ok("0".into()));
-        assert_eq!(result.value, DEFAULT_TIMEOUT_SECS);
+        let result = codex::resolve_timeout_from_env(Ok("0".into()));
+        assert_eq!(result.value, crate::shared::DEFAULT_TIMEOUT_SECS);
         assert!(result.warning.is_some());
     }
 
     #[test]
     fn test_resolve_timeout_rejects_invalid() {
-        let result = resolve_timeout_from_env(Ok("not-a-number".into()));
-        assert_eq!(result.value, DEFAULT_TIMEOUT_SECS);
+        let result = codex::resolve_timeout_from_env(Ok("not-a-number".into()));
+        assert_eq!(result.value, crate::shared::DEFAULT_TIMEOUT_SECS);
         assert!(result.warning.is_some());
     }
 
     #[test]
     fn test_resolve_timeout_empty() {
-        let result = resolve_timeout_from_env(Ok("".into()));
-        assert_eq!(result.value, DEFAULT_TIMEOUT_SECS);
+        let result = codex::resolve_timeout_from_env(Ok("".into()));
+        assert_eq!(result.value, crate::shared::DEFAULT_TIMEOUT_SECS);
         assert!(result.warning.is_none());
     }
 

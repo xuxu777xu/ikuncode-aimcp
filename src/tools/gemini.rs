@@ -20,23 +20,68 @@ const TYPE_MESSAGE: &str = "message";
 const ROLE_ASSISTANT: &str = "assistant";
 const ENV_DEFAULT_TIMEOUT: &str = "GEMINI_DEFAULT_TIMEOUT";
 const ENV_FORCE_MODEL: &str = "GEMINI_FORCE_MODEL";
+const ENV_IMAGE_MODEL: &str = "GEMINI_IMAGE_MODEL";
 const ENV_INCLUDE_DIRS: &str = "GEMINI_INCLUDE_DIRS";
+const ENV_API_KEY: &str = "GEMINI_API_KEY";
+const ENV_IMAGE_API_KEY: &str = "GEMINI_IMAGE_API_KEY";
+const ENV_API_URL: &str = "GEMINI_API_URL";
 const MAX_MESSAGES_LIMIT: usize = 10000; // Maximum number of messages to store
 const MAX_NON_JSON_LINES: usize = 1000; // Maximum non-JSON lines to store
 const MAX_STDERR_BYTES: usize = 100_000; // Maximum stderr output to capture (100KB)
+
+fn parse_timeout_secs_from_env_value(value: &str) -> Option<u64> {
+    let timeout_secs = value.trim().parse::<u64>().ok()?;
+    if (MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&timeout_secs) {
+        Some(timeout_secs)
+    } else {
+        None
+    }
+}
 
 /// Get the default timeout from environment variable or use the hardcoded default
 fn get_default_timeout() -> u64 {
     std::env::var(ENV_DEFAULT_TIMEOUT)
         .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&t| (MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&t))
+        .as_deref()
+        .and_then(parse_timeout_secs_from_env_value)
         .unwrap_or(DEFAULT_TIMEOUT_SECS)
 }
 
 /// Get the force model from environment variable, if set
-fn get_force_model() -> Option<String> {
+pub fn get_force_model() -> Option<String> {
     std::env::var(ENV_FORCE_MODEL)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Get the image model from environment variable, if set
+pub fn get_image_model() -> Option<String> {
+    std::env::var(ENV_IMAGE_MODEL)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Get the API key for regular gemini from environment variable, if set
+pub fn get_api_key() -> Option<String> {
+    std::env::var(ENV_API_KEY)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Get the API key for image gemini from environment variable, if set
+pub fn get_image_api_key() -> Option<String> {
+    std::env::var(ENV_IMAGE_API_KEY)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Get the API base URL from environment variable, if set
+pub fn get_api_url() -> Option<String> {
+    std::env::var(ENV_API_URL)
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -51,6 +96,14 @@ pub struct Options {
     pub model: Option<String>,
     pub timeout_secs: Option<u64>,
     pub include_directories: Vec<PathBuf>,
+    /// Pre-resolved fallback model from environment variable (e.g. GEMINI_FORCE_MODEL or GEMINI_IMAGE_MODEL).
+    /// Used when `model` is not specified. If None, no model flag is passed to the CLI.
+    pub model_env_fallback: Option<String>,
+    /// Optional API key to set as GOOGLE_API_KEY on the child process.
+    /// Allows gemini and gemini_image to use different API keys.
+    pub api_key: Option<String>,
+    /// Optional API base URL to set as GOOGLE_GEMINI_BASE_URL on the child process.
+    pub api_base_url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -160,14 +213,14 @@ fn build_command(opts: &Options) -> Command {
         cmd.arg("--sandbox");
     }
 
-    // Use model from options (normalized: trim + empty→None), or fall back to GEMINI_FORCE_MODEL env var
+    // Use model from options (normalized: trim + empty→None), or fall back to pre-resolved env var
     let model = opts
         .model
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from)
-        .or_else(get_force_model);
+        .or_else(|| opts.model_env_fallback.clone());
 
     if let Some(ref model_val) = model {
         cmd.args(["--model", model_val]);
@@ -190,6 +243,18 @@ fn build_command(opts: &Options) -> Command {
     for dir in &include_dirs {
         cmd.arg("--include-directories");
         cmd.arg(dir.as_os_str());
+    }
+
+    // Override both GOOGLE_API_KEY and GEMINI_API_KEY for the child process if an API key is provided.
+    // Setting both prevents the inherited GEMINI_API_KEY from the parent process from interfering.
+    if let Some(ref api_key) = opts.api_key {
+        cmd.env("GOOGLE_API_KEY", api_key);
+        cmd.env("GEMINI_API_KEY", api_key);
+    }
+
+    // Override GOOGLE_GEMINI_BASE_URL for the child process if a base URL is provided
+    if let Some(ref api_base_url) = opts.api_base_url {
+        cmd.env("GOOGLE_GEMINI_BASE_URL", api_base_url);
     }
 
     // Configure process: stdin is piped so we can write the prompt
@@ -443,6 +508,7 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         assert_eq!(opts.prompt, "test prompt");
@@ -459,6 +525,7 @@ mod tests {
             model: Some("gemini-pro".to_string()),
             timeout_secs: Some(300),
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         assert_eq!(opts.session_id, Some("test-session-123".to_string()));
@@ -536,6 +603,7 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         let cmd = build_command(&opts);
@@ -570,6 +638,7 @@ mod tests {
             model: Some("gemini-pro".to_string()),
             timeout_secs: Some(120),
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         let cmd = build_command(&opts);
@@ -597,6 +666,7 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         let cmd = build_command(&opts);
@@ -719,6 +789,7 @@ mod tests {
             model: None,
             timeout_secs: Some(0), // Invalid: below minimum
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         // We can't actually run the command, but we can verify the validation logic
@@ -742,6 +813,7 @@ mod tests {
             model: None,
             timeout_secs: Some(3601), // Invalid: above maximum
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -763,6 +835,7 @@ mod tests {
             model: None,
             timeout_secs: Some(1), // Valid: minimum
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         // This will fail because gemini CLI doesn't exist, but it should pass validation
@@ -785,6 +858,7 @@ mod tests {
             model: None,
             timeout_secs: Some(3600), // Valid: maximum
             include_directories: vec![],
+            model_env_fallback: None,
         };
 
         let result = runtime.block_on(run(opts_max));
@@ -831,7 +905,7 @@ mod tests {
 
         // === Part 2: Test build_command() with force model scenarios ===
 
-        // Scenario 1: No model in options, no env var - should NOT have --model flag
+        // Scenario 1: No model in options, no env fallback - should NOT have --model flag
         std::env::remove_var(ENV_FORCE_MODEL);
         let opts_no_model = Options {
             prompt: "test prompt".to_string(),
@@ -841,6 +915,7 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: None,
         };
         let cmd = build_command(&opts_no_model);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -849,7 +924,7 @@ mod tests {
             "Scenario 1: Should NOT have --model flag when no model specified and no env var"
         );
 
-        // Scenario 2: No model in options, env var set - should use env var
+        // Scenario 2: No model in options, env fallback set - should use env fallback
         std::env::set_var(ENV_FORCE_MODEL, "gemini-2.0-flash");
         let opts_with_env = Options {
             prompt: "test prompt".to_string(),
@@ -859,6 +934,7 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: get_force_model(),
         };
         let cmd = build_command(&opts_with_env);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -871,7 +947,7 @@ mod tests {
             "Scenario 2: Should have model value from env var"
         );
 
-        // Scenario 3: Model in options, env var set - should use option, not env var
+        // Scenario 3: Model in options, env fallback set - should use option, not env fallback
         let opts_explicit = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -880,6 +956,7 @@ mod tests {
             model: Some("gemini-pro".to_string()),
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: get_force_model(),
         };
         let cmd = build_command(&opts_explicit);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -892,7 +969,7 @@ mod tests {
             "Scenario 3: Should NOT use model from env var when option is provided"
         );
 
-        // Scenario 4: Whitespace-only model in options, env var set - should use env var
+        // Scenario 4: Whitespace-only model in options, env fallback set - should use env fallback
         // (whitespace treated as None - defensive normalization for internal use)
         let opts_whitespace = Options {
             prompt: "test prompt".to_string(),
@@ -902,6 +979,7 @@ mod tests {
             model: Some("   ".to_string()),
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: get_force_model(),
         };
         let cmd = build_command(&opts_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -910,7 +988,7 @@ mod tests {
             "Scenario 4: Whitespace-only model should fall back to env var"
         );
 
-        // Scenario 5: Empty model in options, env var set - should use env var
+        // Scenario 5: Empty model in options, env fallback set - should use env fallback
         let opts_empty = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -919,6 +997,7 @@ mod tests {
             model: Some("".to_string()),
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: get_force_model(),
         };
         let cmd = build_command(&opts_empty);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -927,7 +1006,7 @@ mod tests {
             "Scenario 5: Empty model should fall back to env var"
         );
 
-        // Scenario 6: Model with leading/trailing whitespace, env var set - should use trimmed model
+        // Scenario 6: Model with leading/trailing whitespace, env fallback set - should use trimmed model
         let opts_with_whitespace = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -936,6 +1015,7 @@ mod tests {
             model: Some("  gemini-ultra  ".to_string()),
             timeout_secs: None,
             include_directories: vec![],
+            model_env_fallback: get_force_model(),
         };
         let cmd = build_command(&opts_with_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();
