@@ -1,27 +1,110 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
+const http = require("http");
+const { createUnzip } = require("zlib");
+const { pipeline } = require("stream");
 
-const REPO_URL = "https://github.com/xuxu777xu/ai-cli-mcp.git";
-const BIN_NAME = process.platform === "win32" ? "aimcp.exe" : "aimcp";
+const REPO = "xuxu777xu/ai-cli-mcp";
+const REPO_URL = `https://github.com/${REPO}.git`;
+const PKG_VERSION = require("../package.json").version;
 
-function findCargoBin() {
-  const cargoHome = process.env.CARGO_HOME || path.join(require("os").homedir(), ".cargo");
-  const binPath = path.join(cargoHome, "bin", BIN_NAME);
-  if (fs.existsSync(binPath)) {
-    return binPath;
-  }
-  return null;
+const PLATFORM_MAP = {
+  "win32-x64": { artifact: "aimcp-windows-x86_64.zip", binary: "aimcp.exe" },
+  "darwin-x64": { artifact: "aimcp-macos-x86_64.tar.gz", binary: "aimcp" },
+  "darwin-arm64": { artifact: "aimcp-macos-aarch64.tar.gz", binary: "aimcp" },
+  "linux-x64": { artifact: "aimcp-linux-x86_64.tar.gz", binary: "aimcp" },
+};
+
+function getPlatformKey() {
+  return `${process.platform}-${process.arch}`;
 }
 
-function main() {
-  console.log("[aimcp] Installing via cargo install...");
+function getBinDir() {
+  return path.join(__dirname, "..", "bin");
+}
+
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith("https") ? https : http;
+    client.get(url, { headers: { "User-Agent": "aimcp-installer" } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return httpGet(res.headers.location).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+      }
+      resolve(res);
+    }).on("error", reject);
+  });
+}
+
+async function downloadAndExtract(url, binDir, binaryName) {
+  const tmpFile = path.join(binDir, "tmp_download");
+
+  const res = await httpGet(url);
+  const chunks = [];
+  for await (const chunk of res) {
+    chunks.push(chunk);
+  }
+  const buffer = Buffer.concat(chunks);
+
+  if (url.endsWith(".zip")) {
+    fs.writeFileSync(tmpFile, buffer);
+    if (process.platform === "win32") {
+      execSync(`powershell -Command "Expand-Archive -Path '${tmpFile}' -DestinationPath '${binDir}' -Force"`, { stdio: "pipe" });
+    } else {
+      execSync(`unzip -o "${tmpFile}" -d "${binDir}"`, { stdio: "pipe" });
+    }
+    fs.unlinkSync(tmpFile);
+  } else {
+    fs.writeFileSync(tmpFile, buffer);
+    execSync(`tar xzf "${tmpFile}" -C "${binDir}"`, { stdio: "pipe" });
+    fs.unlinkSync(tmpFile);
+  }
+
+  const binPath = path.join(binDir, binaryName);
+  if (process.platform !== "win32" && fs.existsSync(binPath)) {
+    fs.chmodSync(binPath, 0o755);
+  }
+  return binPath;
+}
+
+async function tryDownloadRelease() {
+  const platformKey = getPlatformKey();
+  const info = PLATFORM_MAP[platformKey];
+  if (!info) {
+    console.log(`[aimcp] No pre-built binary for platform: ${platformKey}`);
+    return false;
+  }
+
+  const tag = `v${PKG_VERSION}`;
+  const url = `https://github.com/${REPO}/releases/download/${tag}/${info.artifact}`;
+  const binDir = getBinDir();
+
+  console.log(`[aimcp] Downloading pre-built binary from ${url}`);
+
+  try {
+    const binPath = await downloadAndExtract(url, binDir, info.binary);
+    if (fs.existsSync(binPath)) {
+      console.log(`[aimcp] Installed successfully: ${binPath}`);
+      return true;
+    }
+  } catch (e) {
+    console.log(`[aimcp] Download failed: ${e.message}`);
+  }
+  return false;
+}
+
+function tryCargoInstall() {
+  console.log("[aimcp] Falling back to cargo install...");
 
   try {
     execSync("cargo --version", { stdio: "pipe" });
   } catch {
     console.error(
-      "[aimcp] Error: Rust toolchain not found.\n" +
+      "[aimcp] Error: No pre-built binary available and Rust toolchain not found.\n" +
       "Please install Rust first: https://rustup.rs\n" +
       "Then run: npm install -g ai-cli-mcp"
     );
@@ -29,19 +112,23 @@ function main() {
   }
 
   try {
-    execSync(`cargo install --git ${REPO_URL} --force`, {
-      stdio: "inherit",
-    });
+    execSync(`cargo install --git ${REPO_URL} --force`, { stdio: "inherit" });
+    console.log("[aimcp] Installed via cargo install");
   } catch (e) {
     console.error("[aimcp] cargo install failed:", e.message);
     process.exit(1);
   }
+}
 
-  const binPath = findCargoBin();
-  if (binPath) {
-    console.log(`[aimcp] Installed successfully: ${binPath}`);
-  } else {
-    console.warn("[aimcp] Warning: binary not found in cargo bin directory");
+async function main() {
+  const binDir = getBinDir();
+  if (!fs.existsSync(binDir)) {
+    fs.mkdirSync(binDir, { recursive: true });
+  }
+
+  const downloaded = await tryDownloadRelease();
+  if (!downloaded) {
+    tryCargoInstall();
   }
 }
 
