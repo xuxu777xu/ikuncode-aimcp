@@ -16,6 +16,7 @@ Unified AI MCP Server — a single Rust binary that combines [Gemini CLI](https:
 | Tool | Source | Description |
 |------|--------|-------------|
 | `gemini` | Gemini CLI | AI-driven tasks with session continuity |
+| `gemini_image` | Gemini CLI | AI image generation with dedicated model |
 | `codex` | Codex CLI | AI-assisted coding with sandbox policies |
 | `web_search` | Grok API | Web search returning structured JSON results |
 | `web_fetch` | Grok API | Fetch web page content as Markdown |
@@ -32,6 +33,24 @@ Unified AI MCP Server — a single Rust binary that combines [Gemini CLI](https:
 | `SESSION_ID` | No | string | — | Resume an existing session for multi-turn conversations |
 | `return_all_messages` | No | bool | `false` | Return all messages including reasoning and tool calls |
 | `model` | No | string | — | Model override. Falls back to `GEMINI_FORCE_MODEL` env var or Gemini CLI default |
+| `timeout_secs` | No | int | 600 | Timeout in seconds (1–3600) |
+
+**Return structure:**
+- `success` — boolean indicating execution status
+- `SESSION_ID` — unique identifier for resuming this conversation
+- `agent_messages` — concatenated assistant response text
+- `all_messages` — (optional) complete JSON events when `return_all_messages=true`
+- `error` — error description when `success=false`
+
+### `gemini_image` — Gemini Image Generation
+
+| Parameter | Required | Type | Default | Description |
+|-----------|----------|------|---------|-------------|
+| `PROMPT` | **Yes** | string | — | Instruction for the image generation task |
+| `sandbox` | No | bool | `false` | Run in sandbox mode (isolated execution) |
+| `SESSION_ID` | No | string | — | Resume an existing session for multi-turn conversations |
+| `return_all_messages` | No | bool | `false` | Return all messages including reasoning and tool calls |
+| `model` | No | string | — | Model override. Falls back to `GEMINI_IMAGE_MODEL` env var or Gemini CLI default |
 | `timeout_secs` | No | int | 600 | Timeout in seconds (1–3600) |
 
 **Return structure:**
@@ -113,7 +132,8 @@ Install the CLI tools you want to use:
 |----------|-------------|
 | `GEMINI_BIN` | Override path to the gemini binary |
 | `GEMINI_DEFAULT_TIMEOUT` | Default timeout in seconds (default: 600) |
-| `GEMINI_FORCE_MODEL` | Force a specific model for all sessions |
+| `GEMINI_FORCE_MODEL` | Default model for regular tasks (used when `gemini` tool has no model specified) |
+| `GEMINI_IMAGE_MODEL` | Default model for image generation (used when `gemini_image` tool has no model specified) |
 | `GEMINI_INCLUDE_DIRS` | Comma-separated extra directories for Gemini CLI `--include-directories` |
 
 #### Codex
@@ -149,7 +169,9 @@ Install the CLI tools you want to use:
       "command": "aimcp",
       "env": {
         "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "your-key"
+        "GROK_API_KEY": "your-key",
+        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
       }
     }
   }
@@ -167,7 +189,9 @@ Add to your MCP settings file:
       "command": "aimcp",
       "env": {
         "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "xai-..."
+        "GROK_API_KEY": "xai-...",
+        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
       }
     }
   }

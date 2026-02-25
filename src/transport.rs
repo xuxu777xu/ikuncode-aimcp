@@ -193,7 +193,12 @@ impl<T: DeserializeOwned> Decoder for AdaptiveCodec<T> {
             }
         }
 
-        match self.detected_format.unwrap() {
+        let format = match self.detected_format {
+            Some(format) => format,
+            None => return Ok(None),
+        };
+
+        match format {
             FramingFormat::Lsp => self.decode_lsp(buf),
             FramingFormat::JsonLines => self.decode_jsonl(buf),
         }

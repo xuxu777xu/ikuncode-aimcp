@@ -9,22 +9,55 @@ use super::prompts::{FETCH_PROMPT, SEARCH_PROMPT};
 
 /// Chinese time-related keywords
 const CN_TIME_KEYWORDS: &[&str] = &[
-    "当前", "现在", "今天", "明天", "昨天",
-    "本周", "上周", "下周", "这周",
-    "本月", "上月", "下月", "这个月",
-    "今年", "去年", "明年",
-    "最新", "最近", "近期", "刚刚", "刚才",
-    "实时", "即时", "目前",
+    "当前",
+    "现在",
+    "今天",
+    "明天",
+    "昨天",
+    "本周",
+    "上周",
+    "下周",
+    "这周",
+    "本月",
+    "上月",
+    "下月",
+    "这个月",
+    "今年",
+    "去年",
+    "明年",
+    "最新",
+    "最近",
+    "近期",
+    "刚刚",
+    "刚才",
+    "实时",
+    "即时",
+    "目前",
 ];
 
 /// English time-related keywords
 const EN_TIME_KEYWORDS: &[&str] = &[
-    "current", "now", "today", "tomorrow", "yesterday",
-    "this week", "last week", "next week",
-    "this month", "last month", "next month",
-    "this year", "last year", "next year",
-    "latest", "recent", "recently", "just now",
-    "real-time", "realtime", "up-to-date",
+    "current",
+    "now",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "this week",
+    "last week",
+    "next week",
+    "this month",
+    "last month",
+    "next month",
+    "this year",
+    "last year",
+    "next year",
+    "latest",
+    "recent",
+    "recently",
+    "just now",
+    "real-time",
+    "realtime",
+    "up-to-date",
 ];
 
 /// Retryable HTTP status codes
@@ -52,7 +85,15 @@ pub fn needs_time_context(query: &str) -> bool {
 /// Get local time info string for injection into queries
 fn get_local_time_info() -> String {
     let now = Local::now();
-    let weekdays_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"];
+    let weekdays_cn = [
+        "星期一",
+        "星期二",
+        "星期三",
+        "星期四",
+        "星期五",
+        "星期六",
+        "星期日",
+    ];
     let weekday = weekdays_cn[now.weekday().num_days_from_monday() as usize];
 
     format!(
@@ -153,7 +194,10 @@ impl GrokSearchProvider {
             String::new()
         };
 
-        let user_content = format!("{}{}{}{}", time_context, query, platform_prompt, return_prompt);
+        let user_content = format!(
+            "{}{}{}{}",
+            time_context, query, platform_prompt, return_prompt
+        );
 
         let payload = serde_json::json!({
             "model": self.model,
@@ -292,13 +336,19 @@ impl GrokSearchProvider {
                     if let Ok(data) = serde_json::from_str::<serde_json::Value>(data_str) {
                         if let Some(choices) = data.get("choices").and_then(|c| c.as_array()) {
                             if let Some(first) = choices.first() {
-                                if let Some(delta_content) =
-                                    first.get("delta").and_then(|d| d.get("content")).and_then(|c| c.as_str())
+                                if let Some(delta_content) = first
+                                    .get("delta")
+                                    .and_then(|d| d.get("content"))
+                                    .and_then(|c| c.as_str())
                                 {
                                     content.push_str(delta_content);
                                 }
                                 // Check for finish_reason (some proxies don't send [DONE])
-                                if first.get("finish_reason").and_then(|v| v.as_str()).is_some() {
+                                if first
+                                    .get("finish_reason")
+                                    .and_then(|v| v.as_str())
+                                    .is_some()
+                                {
                                     finished = true;
                                     break;
                                 }
@@ -332,8 +382,12 @@ impl GrokSearchProvider {
         }
 
         if Config::debug_enabled() {
-            eprintln!("[grok] stream ended (finished={}), lines: {}, content length: {}",
-                finished, full_body_lines.len(), content.len());
+            eprintln!(
+                "[grok] stream ended (finished={}), lines: {}, content length: {}",
+                finished,
+                full_body_lines.len(),
+                content.len()
+            );
             if content.is_empty() && !full_body_lines.is_empty() {
                 for (i, l) in full_body_lines.iter().take(5).enumerate() {
                     eprintln!("[grok] body line {}: {}", i, &l[..l.len().min(200)]);
@@ -389,12 +443,17 @@ impl GrokSearchProvider {
                             .get("retry-after")
                             .and_then(|v| v.to_str().ok())
                             .and_then(parse_retry_after)
-                            .unwrap_or_else(|| exponential_backoff_with_jitter(attempt, multiplier, max_wait))
+                            .unwrap_or_else(|| {
+                                exponential_backoff_with_jitter(attempt, multiplier, max_wait)
+                            })
                     } else {
                         exponential_backoff_with_jitter(attempt, multiplier, max_wait)
                     };
 
-                    eprintln!("[grok] Retryable error (HTTP {}), waiting {:.1}s", status_code, wait_secs);
+                    eprintln!(
+                        "[grok] Retryable error (HTTP {}), waiting {:.1}s",
+                        status_code, wait_secs
+                    );
                     tokio::time::sleep(Duration::from_secs_f64(wait_secs)).await;
                     last_error = Some(anyhow::anyhow!("HTTP {}", status_code));
                 }
@@ -499,7 +558,12 @@ mod tests {
     fn test_exponential_backoff_respects_max() {
         for attempt in 0..10 {
             let wait = exponential_backoff_with_jitter(attempt, 1.0, 5);
-            assert!(wait <= 5.0, "wait {} exceeded max 5 for attempt {}", wait, attempt);
+            assert!(
+                wait <= 5.0,
+                "wait {} exceeded max 5 for attempt {}",
+                wait,
+                attempt
+            );
         }
     }
 

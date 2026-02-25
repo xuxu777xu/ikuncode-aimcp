@@ -11,9 +11,7 @@ pub struct Config {
 
 impl Config {
     fn new() -> Self {
-        Self {
-            cached_model: None,
-        }
+        Self { cached_model: None }
     }
 
     /// Get the global config singleton
@@ -96,7 +94,10 @@ pub fn get_config_info() -> serde_json::Value {
                 (url, "❌ GROK_API_KEY not set".to_string())
             }
         }
-        Err(e) => ("Not configured".to_string(), format!("❌ Configuration error: {e}")),
+        Err(e) => (
+            "Not configured".to_string(),
+            format!("❌ Configuration error: {e}"),
+        ),
     };
 
     let model = {
@@ -138,5 +139,4 @@ mod tests {
         assert!((Config::retry_multiplier() - 1.0).abs() < f64::EPSILON);
         assert_eq!(Config::retry_max_wait(), 10);
     }
-
 }

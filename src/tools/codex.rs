@@ -118,20 +118,23 @@ async fn read_line_with_limit<R: AsyncBufReadExt + Unpin>(
 const MAX_CLI_PROMPT_LEN: usize = 800;
 
 const SPECIAL_CHARS: &[char] = &[
-    '\n', '\\', '"', '\'', '`', '$',
-    '%', '^', '!', '&', '|', '<', '>', '(', ')',
+    '\n', '\\', '"', '\'', '`', '$', '%', '^', '!', '&', '|', '<', '>', '(', ')',
 ];
 
 fn needs_stdin_mode(prompt: &str) -> bool {
     prompt.len() > MAX_CLI_PROMPT_LEN || prompt.contains(SPECIAL_CHARS)
 }
 
-pub async fn run(opts: Options) -> Result<CodexResult> {
-    let timeout_secs = match opts.timeout_secs {
+fn normalize_timeout_secs(timeout_secs: Option<u64>) -> u64 {
+    match timeout_secs {
         None | Some(0) => DEFAULT_TIMEOUT_SECS,
-        Some(t) if t > MAX_TIMEOUT_SECS => MAX_TIMEOUT_SECS,
-        Some(t) => t,
-    };
+        Some(value) if value > MAX_TIMEOUT_SECS => MAX_TIMEOUT_SECS,
+        Some(value) => value,
+    }
+}
+
+pub async fn run(opts: Options) -> Result<CodexResult> {
+    let timeout_secs = normalize_timeout_secs(opts.timeout_secs);
 
     let opts = Options {
         timeout_secs: Some(timeout_secs),
@@ -256,11 +259,10 @@ async fn run_internal(opts: Options) -> Result<CodexResult> {
     const DEFAULT_MESSAGE_LIMIT: usize = 10000;
     const MAX_AGENT_MESSAGES_SIZE: usize = 10 * 1024 * 1024;
     const MAX_ALL_MESSAGES_SIZE: usize = 50 * 1024 * 1024;
-    let message_limit = if let Some(limit) = opts.return_all_messages_limit {
-        limit.min(MAX_MESSAGE_LIMIT)
-    } else {
-        DEFAULT_MESSAGE_LIMIT
-    };
+    let message_limit = opts
+        .return_all_messages_limit
+        .unwrap_or(DEFAULT_MESSAGE_LIMIT)
+        .min(MAX_MESSAGE_LIMIT);
 
     let mut all_messages_size: usize = 0;
 
@@ -752,7 +754,10 @@ mod tests {
     fn test_sandbox_policy_as_str() {
         assert_eq!(SandboxPolicy::ReadOnly.as_str(), "read-only");
         assert_eq!(SandboxPolicy::WorkspaceWrite.as_str(), "workspace-write");
-        assert_eq!(SandboxPolicy::DangerFullAccess.as_str(), "danger-full-access");
+        assert_eq!(
+            SandboxPolicy::DangerFullAccess.as_str(),
+            "danger-full-access"
+        );
     }
 
     #[test]
@@ -793,7 +798,11 @@ mod tests {
         };
         let updated = enforce_required_fields(result, ValidationMode::Full);
         assert!(updated.success);
-        assert!(updated.warnings.as_ref().unwrap().contains("No agent_messages"));
+        assert!(updated
+            .warnings
+            .as_ref()
+            .unwrap()
+            .contains("No agent_messages"));
     }
 
     #[test]
@@ -810,7 +819,11 @@ mod tests {
         };
         let updated = enforce_required_fields(result, ValidationMode::Full);
         assert!(!updated.success);
-        assert!(updated.error.as_ref().unwrap().contains("Failed to get SESSION_ID"));
+        assert!(updated
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("Failed to get SESSION_ID"));
     }
 
     #[test]
@@ -835,7 +848,10 @@ mod tests {
         };
         let updated = enforce_required_fields(result, ValidationMode::Skip);
         assert!(!updated.success);
-        assert_eq!(updated.error.unwrap(), "Codex execution timed out after 10 seconds");
+        assert_eq!(
+            updated.error.unwrap(),
+            "Codex execution timed out after 10 seconds"
+        );
         assert!(updated.warnings.is_none());
         assert!(updated.session_id.is_empty());
     }
@@ -849,14 +865,20 @@ mod tests {
             agent_messages_truncated: false,
             all_messages: Vec::new(),
             all_messages_truncated: false,
-            error: Some("Output line exceeded 1048576 byte limit and was truncated, cannot parse JSON.".to_string()),
+            error: Some(
+                "Output line exceeded 1048576 byte limit and was truncated, cannot parse JSON."
+                    .to_string(),
+            ),
             warnings: None,
         };
         let updated = enforce_required_fields(result, ValidationMode::Full);
         assert!(!updated.success);
         let error = updated.error.unwrap();
         assert!(error.contains("truncated"));
-        assert!(!error.contains("SESSION_ID"), "Should not add session_id error when truncation error exists");
+        assert!(
+            !error.contains("SESSION_ID"),
+            "Should not add session_id error when truncation error exists"
+        );
         assert!(updated.warnings.is_some());
         assert!(updated.warnings.unwrap().contains("No agent_messages"));
     }
@@ -901,26 +923,50 @@ mod tests {
     #[test]
     fn resolve_env_bool_accepts_truthy_values() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("K", Some("1".into()), &mut warnings), Some(true));
-        assert_eq!(resolve_env_bool("K", Some("true".into()), &mut warnings), Some(true));
-        assert_eq!(resolve_env_bool("K", Some("yes".into()), &mut warnings), Some(true));
-        assert_eq!(resolve_env_bool("K", Some("on".into()), &mut warnings), Some(true));
+        assert_eq!(
+            resolve_env_bool("K", Some("1".into()), &mut warnings),
+            Some(true)
+        );
+        assert_eq!(
+            resolve_env_bool("K", Some("true".into()), &mut warnings),
+            Some(true)
+        );
+        assert_eq!(
+            resolve_env_bool("K", Some("yes".into()), &mut warnings),
+            Some(true)
+        );
+        assert_eq!(
+            resolve_env_bool("K", Some("on".into()), &mut warnings),
+            Some(true)
+        );
         assert!(warnings.is_empty());
     }
 
     #[test]
     fn resolve_env_bool_accepts_falsy_values() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("K", Some("0".into()), &mut warnings), Some(false));
-        assert_eq!(resolve_env_bool("K", Some("false".into()), &mut warnings), Some(false));
-        assert_eq!(resolve_env_bool("K", Some("off".into()), &mut warnings), Some(false));
+        assert_eq!(
+            resolve_env_bool("K", Some("0".into()), &mut warnings),
+            Some(false)
+        );
+        assert_eq!(
+            resolve_env_bool("K", Some("false".into()), &mut warnings),
+            Some(false)
+        );
+        assert_eq!(
+            resolve_env_bool("K", Some("off".into()), &mut warnings),
+            Some(false)
+        );
         assert!(warnings.is_empty());
     }
 
     #[test]
     fn resolve_env_bool_warns_on_invalid() {
         let mut warnings = Vec::new();
-        assert_eq!(resolve_env_bool("TEST_KEY", Some("maybe".into()), &mut warnings), None);
+        assert_eq!(
+            resolve_env_bool("TEST_KEY", Some("maybe".into()), &mut warnings),
+            None
+        );
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("TEST_KEY"));
         assert!(warnings[0].contains("maybe"));
@@ -951,7 +997,8 @@ mod tests {
             allow_yolo: false,
             allow_skip_git_check: false,
         };
-        let warnings = apply_security_restrictions(&mut sandbox, &mut yolo, &mut skip_git, &security);
+        let warnings =
+            apply_security_restrictions(&mut sandbox, &mut yolo, &mut skip_git, &security);
         assert_eq!(warnings.len(), 3);
         assert_eq!(sandbox, SandboxPolicy::ReadOnly);
         assert!(!yolo);
@@ -960,7 +1007,10 @@ mod tests {
 
     #[test]
     fn attach_warnings_appends_to_error_message() {
-        let message = attach_warnings("failure".to_string(), Some("warn-one\nwarn-two".to_string()));
+        let message = attach_warnings(
+            "failure".to_string(),
+            Some("warn-one\nwarn-two".to_string()),
+        );
         assert!(message.contains("failure"));
         assert!(message.contains("Warnings: warn-one"));
         assert!(message.contains("warn-two"));

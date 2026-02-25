@@ -320,8 +320,6 @@ mod tests {
 
     #[test]
     fn test_prompts_are_non_empty() {
-        assert!(!FETCH_PROMPT.is_empty());
-        assert!(!SEARCH_PROMPT.is_empty());
         assert!(SEARCH_PROMPT.contains("MCP"));
         assert!(FETCH_PROMPT.contains("Markdown"));
     }

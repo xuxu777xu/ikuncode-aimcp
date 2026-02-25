@@ -183,8 +183,6 @@ mod tests {
         assert_eq!(DEFAULT_TIMEOUT_SECS, 600);
         assert_eq!(MAX_TIMEOUT_SECS, 3600);
         assert_eq!(MIN_TIMEOUT_SECS, 1);
-        assert!(MIN_TIMEOUT_SECS < DEFAULT_TIMEOUT_SECS);
-        assert!(DEFAULT_TIMEOUT_SECS < MAX_TIMEOUT_SECS);
     }
 
     #[test]

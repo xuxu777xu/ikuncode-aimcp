@@ -10,10 +10,10 @@ pub async fn web_search(
     min_results: i32,
     max_results: i32,
 ) -> Result<String> {
-    let api_url = Config::grok_api_url()
-        .map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
-    let api_key = Config::grok_api_key()
-        .map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
+    let api_url =
+        Config::grok_api_url().map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
+    let api_key =
+        Config::grok_api_key().map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
     let model = {
         let cfg = Config::global();
         let mut cfg = cfg.lock().unwrap();
@@ -23,7 +23,9 @@ pub async fn web_search(
     let provider = GrokSearchProvider::new(api_url, api_key, model);
 
     eprintln!("[grok] Begin Search: {}", query);
-    let result = provider.search(query, platform, min_results, max_results).await?;
+    let result = provider
+        .search(query, platform, min_results, max_results)
+        .await?;
     eprintln!("[grok] Search Finished!");
 
     Ok(result)
@@ -31,10 +33,10 @@ pub async fn web_search(
 
 /// Fetch and extract content from a URL via the Grok API
 pub async fn web_fetch(url: &str) -> Result<String> {
-    let api_url = Config::grok_api_url()
-        .map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
-    let api_key = Config::grok_api_key()
-        .map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
+    let api_url =
+        Config::grok_api_url().map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
+    let api_key =
+        Config::grok_api_key().map_err(|e| anyhow::anyhow!("Configuration error: {}", e))?;
     let model = {
         let cfg = Config::global();
         let mut cfg = cfg.lock().unwrap();
@@ -123,5 +125,4 @@ mod tests {
         assert!(info.contains("config_status"));
         assert!(info.contains("connection_test"));
     }
-
 }

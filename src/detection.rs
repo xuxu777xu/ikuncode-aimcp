@@ -13,8 +13,8 @@ pub struct Capabilities {
 pub fn detect() -> Capabilities {
     let gemini_path = find_binary("gemini", "GEMINI_BIN");
     let codex_path = find_binary("codex", "CODEX_BIN");
-    let grok_available = std::env::var("GROK_API_URL").is_ok()
-        && std::env::var("GROK_API_KEY").is_ok();
+    let grok_available =
+        std::env::var("GROK_API_URL").is_ok() && std::env::var("GROK_API_KEY").is_ok();
 
     let caps = Capabilities {
         gemini_available: gemini_path.is_some(),
@@ -24,17 +24,25 @@ pub fn detect() -> Capabilities {
         grok_available,
     };
 
+    let gemini_status = match &caps.gemini_path {
+        Some(path) => format!("✓ ({})", path.display()),
+        None => "✗ (not found)".to_string(),
+    };
+    let codex_status = match &caps.codex_path {
+        Some(path) => format!("✓ ({})", path.display()),
+        None => "✗ (not found)".to_string(),
+    };
+    let grok_status = if caps.grok_available {
+        "✓ (API key configured)".to_string()
+    } else {
+        "✗ (GROK_API_URL or GROK_API_KEY not set)".to_string()
+    };
+
     // Log detection results to stderr
     eprintln!("[aimcp] Tools detection:");
-    eprintln!("  Gemini:  {}", if caps.gemini_available {
-        format!("✓ ({})", caps.gemini_path.as_ref().unwrap().display())
-    } else { "✗ (not found)".into() });
-    eprintln!("  Codex:   {}", if caps.codex_available {
-        format!("✓ ({})", caps.codex_path.as_ref().unwrap().display())
-    } else { "✗ (not found)".into() });
-    eprintln!("  Grok:    {}", if caps.grok_available {
-        "✓ (API key configured)".into()
-    } else { "✗ (GROK_API_URL or GROK_API_KEY not set)".to_string() });
+    eprintln!("  Gemini:  {}", gemini_status);
+    eprintln!("  Codex:   {}", codex_status);
+    eprintln!("  Grok:    {}", grok_status);
 
     caps
 }

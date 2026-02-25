@@ -16,6 +16,7 @@
 | 工具 | 来源 | 描述 |
 |------|------|------|
 | `gemini` | Gemini CLI | AI 驱动的任务执行，支持会话连续性 |
+| `gemini_image` | Gemini CLI | AI 图像生成，使用专用生图模型 |
 | `codex` | Codex CLI | AI 辅助编码，支持沙箱策略 |
 | `web_search` | Grok API | Web 搜索，返回结构化 JSON 结果 |
 | `web_fetch` | Grok API | 抓取网页内容并转为 Markdown |
@@ -32,6 +33,24 @@
 | `SESSION_ID` | 否 | string | — | 恢复已有会话，用于多轮对话 |
 | `return_all_messages` | 否 | bool | `false` | 返回所有消息（含推理过程和工具调用） |
 | `model` | 否 | string | — | 模型覆盖。回退到 `GEMINI_FORCE_MODEL` 环境变量或 Gemini CLI 默认值 |
+| `timeout_secs` | 否 | int | 600 | 超时时间，单位秒（1–3600） |
+
+**返回结构：**
+- `success` — 执行状态（布尔值）
+- `SESSION_ID` — 用于恢复对话的唯一标识符
+- `agent_messages` — 拼接的助手回复文本
+- `all_messages` — （可选）`return_all_messages=true` 时返回完整的 JSON 事件
+- `error` — `success=false` 时的错误描述
+
+### `gemini_image` — Gemini 图像生成
+
+| 参数 | 必填 | 类型 | 默认值 | 描述 |
+|------|------|------|--------|------|
+| `PROMPT` | **是** | string | — | 发送给 Gemini 的图像生成指令 |
+| `sandbox` | 否 | bool | `false` | 在沙箱模式下运行（隔离执行） |
+| `SESSION_ID` | 否 | string | — | 恢复已有会话，用于多轮对话 |
+| `return_all_messages` | 否 | bool | `false` | 返回所有消息（含推理过程和工具调用） |
+| `model` | 否 | string | — | 模型覆盖。回退到 `GEMINI_IMAGE_MODEL` 环境变量或 Gemini CLI 默认值 |
 | `timeout_secs` | 否 | int | 600 | 超时时间，单位秒（1–3600） |
 
 **返回结构：**
@@ -113,7 +132,8 @@ cargo build --release
 |------|------|
 | `GEMINI_BIN` | 覆盖 gemini 二进制文件路径 |
 | `GEMINI_DEFAULT_TIMEOUT` | 默认超时时间，单位秒（默认：600） |
-| `GEMINI_FORCE_MODEL` | 强制所有会话使用指定模型 |
+| `GEMINI_FORCE_MODEL` | 常规任务的默认模型（当 `gemini` 工具未指定 model 时使用） |
+| `GEMINI_IMAGE_MODEL` | 图像生成的默认模型（当 `gemini_image` 工具未指定 model 时使用） |
 | `GEMINI_INCLUDE_DIRS` | 逗号分隔的额外目录，传给 Gemini CLI 的 `--include-directories` |
 
 #### Codex
@@ -149,7 +169,9 @@ cargo build --release
       "command": "aimcp",
       "env": {
         "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "your-key"
+        "GROK_API_KEY": "your-key",
+        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
       }
     }
   }
@@ -167,7 +189,9 @@ cargo build --release
       "command": "aimcp",
       "env": {
         "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "xai-..."
+        "GROK_API_KEY": "xai-...",
+        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
+        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview"
       }
     }
   }
