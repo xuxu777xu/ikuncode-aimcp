@@ -1,6 +1,7 @@
 use crate::shared::find_binary;
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct Capabilities {
     pub gemini_available: bool,
     pub gemini_path: Option<PathBuf>,
