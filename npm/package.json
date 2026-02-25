@@ -1,0 +1,28 @@
+{
+  "name": "ai-cli-mcp",
+  "version": "0.1.0",
+  "description": "Unified MCP server combining Gemini, Codex, and Grok Search",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xuxu777xu/ai-cli-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "gemini",
+    "codex",
+    "grok",
+    "ai",
+    "cli"
+  ],
+  "bin": {
+    "aimcp": "bin/aimcp.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/"
+  ]
+}
