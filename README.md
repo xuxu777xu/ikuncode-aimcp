@@ -44,21 +44,24 @@
 
 ### `gemini_image` — Gemini 图像生成
 
+通过 Gemini API 直接生成图像（非 CLI），支持宽高比和分辨率控制，生成后自动保存到指定目录。
+
 | 参数 | 必填 | 类型 | 默认值 | 描述 |
 |------|------|------|--------|------|
 | `PROMPT` | **是** | string | — | 发送给 Gemini 的图像生成指令 |
-| `sandbox` | 否 | bool | `false` | 在沙箱模式下运行（隔离执行） |
-| `SESSION_ID` | 否 | string | — | 恢复已有会话，用于多轮对话 |
-| `return_all_messages` | 否 | bool | `false` | 返回所有消息（含推理过程和工具调用） |
-| `model` | 否 | string | — | 模型覆盖。回退到 `GEMINI_IMAGE_MODEL` 环境变量或 Gemini CLI 默认值 |
+| `model` | 否 | string | — | 模型覆盖。回退到 `GEMINI_IMAGE_MODEL` 环境变量 |
+| `output_dir` | 否 | string | — | 图片保存目录。回退到 MCP workspace root → 当前工作目录 |
+| `aspect_ratio` | 否 | string | — | 宽高比：`1:1`、`2:3`、`3:2`、`3:4`、`4:3`、`4:5`、`5:4`、`9:16`、`16:9`、`21:9` |
+| `image_size` | 否 | string | — | 分辨率：`1K`、`2K`、`4K`（4K 仅部分模型支持，如 `gemini-3-pro-image-preview`） |
 | `timeout_secs` | 否 | int | 600 | 超时时间，单位秒（1–3600） |
+| `sandbox` | 否 | bool | `false` | 在沙箱模式下运行 |
+| `SESSION_ID` | 否 | string | — | 恢复已有会话 |
+| `return_all_messages` | 否 | bool | `false` | 返回所有消息 |
 
 **返回结构：**
-- `success` — 执行状态（布尔值）
-- `SESSION_ID` — 用于恢复对话的唯一标识符
-- `agent_messages` — 拼接的助手回复文本
-- `all_messages` — （可选）`return_all_messages=true` 时返回完整的 JSON 事件
-- `error` — `success=false` 时的错误描述
+- 生成的图像（base64 内联数据）
+- 模型文本回复（如有）
+- 保存路径信息（文件名格式：`gemini_image_YYYYMMDD_HHMMSS.{ext}`）
 
 ### `codex` — 执行 Codex CLI
 
