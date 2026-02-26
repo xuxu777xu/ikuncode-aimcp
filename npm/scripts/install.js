@@ -91,8 +91,11 @@ async function tryDownloadRelease() {
       console.log(`[ikuncode-aimcp] Installed successfully: ${binPath}`);
       return true;
     }
+    console.error(`[ikuncode-aimcp] Download succeeded but binary not found at: ${binPath}`);
   } catch (e) {
-    console.log(`[ikuncode-aimcp] Download failed: ${e.message}`);
+    console.error(`[ikuncode-aimcp] Download failed: ${e.message}`);
+    console.error(`[ikuncode-aimcp]   URL: ${url}`);
+    console.error(`[ikuncode-aimcp]   Platform: ${platformKey}`);
   }
   return false;
 }
@@ -105,6 +108,7 @@ function tryCargoInstall() {
   } catch {
     console.error(
       "[ikuncode-aimcp] Error: No pre-built binary available and Rust toolchain not found.\n" +
+      `[ikuncode-aimcp]   Platform: ${process.platform}-${process.arch}\n` +
       "Please install Rust first: https://rustup.rs\n" +
       "Then run: npm install -g ikuncode-aimcp"
     );
@@ -129,6 +133,28 @@ async function main() {
   const downloaded = await tryDownloadRelease();
   if (!downloaded) {
     tryCargoInstall();
+  }
+
+  // Final verification: ensure binary actually exists
+  const platformKey = getPlatformKey();
+  const info = PLATFORM_MAP[platformKey];
+  if (info) {
+    const binPath = path.join(binDir, info.binary);
+    if (!fs.existsSync(binPath)) {
+      // Also check cargo bin
+      const cargoHome = process.env.CARGO_HOME || path.join(require("os").homedir(), ".cargo");
+      const cargoBin = path.join(cargoHome, "bin", info.binary);
+      if (!fs.existsSync(cargoBin)) {
+        console.error("\n[ikuncode-aimcp] ========================================");
+        console.error("[ikuncode-aimcp] WARNING: Installation incomplete!");
+        console.error(`[ikuncode-aimcp]   Binary not found at: ${binPath}`);
+        console.error(`[ikuncode-aimcp]   Cargo bin not found at: ${cargoBin}`);
+        console.error(`[ikuncode-aimcp]   Platform: ${platformKey}`);
+        console.error("[ikuncode-aimcp]   Try: npm install -g ikuncode-aimcp --force");
+        console.error("[ikuncode-aimcp] ========================================\n");
+        process.exit(1);
+      }
+    }
   }
 }
 

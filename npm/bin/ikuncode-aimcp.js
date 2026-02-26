@@ -22,9 +22,15 @@ function findBinary() {
 const binPath = findBinary();
 
 if (!binPath) {
+  const localBinPath = path.join(__dirname, BIN_NAME);
+  const cargoHome = process.env.CARGO_HOME || path.join(require("os").homedir(), ".cargo");
+  const cargoBinPath = path.join(cargoHome, "bin", BIN_NAME);
   process.stderr.write(
     "[ikuncode-aimcp] Binary not found.\n" +
-    "Please run: npm install -g ikuncode-aimcp\n"
+    `[ikuncode-aimcp]   Platform: ${process.platform}-${process.arch}\n` +
+    `[ikuncode-aimcp]   Checked: ${localBinPath}\n` +
+    `[ikuncode-aimcp]   Checked: ${cargoBinPath}\n` +
+    "[ikuncode-aimcp] Try: npm install -g ikuncode-aimcp --force\n"
   );
   process.exit(1);
 }
