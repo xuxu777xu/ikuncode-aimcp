@@ -234,22 +234,23 @@ cargo build --release
 
 ```
 ikuncode-aimcp/src/
-├── main.rs           # 入口：clap + UnifiedServer + AdaptiveStdio
-├── lib.rs            # 模块声明
-├── server.rs         # UnifiedServer：所有工具 + 运行时可用性检查
-├── transport.rs      # AdaptiveStdio（JSONL/LSP 自动检测）
-├── detection.rs      # 运行时工具可用性检测
-├── shared.rs         # 共享工具（Job Object、超时常量、find_binary）
+├── main.rs               # 入口：clap + UnifiedServer + AdaptiveStdio
+├── lib.rs                # 模块声明
+├── server.rs             # UnifiedServer：所有工具 + 运行时可用性检查
+├── transport.rs          # AdaptiveStdio（JSONL/LSP 自动检测）
+├── detection.rs          # 运行时工具可用性检测
+├── shared.rs             # 共享工具（Job Object、超时常量、find_binary）
 └── tools/
     ├── mod.rs
-    ├── gemini.rs     # Gemini CLI 包装器
-    ├── codex.rs      # Codex CLI 包装器（含安全策略）
+    ├── gemini.rs             # Gemini CLI 包装器
+    ├── gemini_image_api.rs   # Gemini 图像生成 API（直接 HTTP 调用，支持宽高比/分辨率）
+    ├── codex.rs              # Codex CLI 包装器（含安全策略）
     └── grok/
         ├── mod.rs
-        ├── config.rs     # 配置单例 + 环境变量 + 持久化
-        ├── prompts.rs    # 搜索/抓取 prompt 常量
-        ├── provider.rs   # Grok API 客户端（SSE 流式 + 重试）
-        └── tools.rs      # web_search、web_fetch、get_config_info、switch_model
+        ├── config.rs         # 配置单例 + 环境变量 + 超时参数
+        ├── prompts.rs        # 搜索/抓取 prompt 常量
+        ├── provider.rs       # Grok API 客户端（SSE 流式 + 重试 + 超时检测）
+        └── tools.rs          # web_search、web_fetch、get_config_info、switch_model
 ```
 
 ## 许可证
