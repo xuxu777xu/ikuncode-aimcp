@@ -509,6 +509,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         assert_eq!(opts.prompt, "test prompt");
@@ -526,6 +528,8 @@ mod tests {
             timeout_secs: Some(300),
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         assert_eq!(opts.session_id, Some("test-session-123".to_string()));
@@ -604,6 +608,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         let cmd = build_command(&opts);
@@ -639,6 +645,8 @@ mod tests {
             timeout_secs: Some(120),
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         let cmd = build_command(&opts);
@@ -667,6 +675,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         let cmd = build_command(&opts);
@@ -790,6 +800,8 @@ mod tests {
             timeout_secs: Some(0), // Invalid: below minimum
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         // We can't actually run the command, but we can verify the validation logic
@@ -814,6 +826,8 @@ mod tests {
             timeout_secs: Some(3601), // Invalid: above maximum
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -836,6 +850,8 @@ mod tests {
             timeout_secs: Some(1), // Valid: minimum
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         // This will fail because gemini CLI doesn't exist, but it should pass validation
@@ -859,6 +875,8 @@ mod tests {
             timeout_secs: Some(3600), // Valid: maximum
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
 
         let result = runtime.block_on(run(opts_max));
@@ -916,6 +934,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: None,
+            api_key: None,
+            api_base_url: None,
         };
         let cmd = build_command(&opts_no_model);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -935,6 +955,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: get_force_model(),
+            api_key: None,
+            api_base_url: None,
         };
         let cmd = build_command(&opts_with_env);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -957,6 +979,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: get_force_model(),
+            api_key: None,
+            api_base_url: None,
         };
         let cmd = build_command(&opts_explicit);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -980,6 +1004,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: get_force_model(),
+            api_key: None,
+            api_base_url: None,
         };
         let cmd = build_command(&opts_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -998,6 +1024,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: get_force_model(),
+            api_key: None,
+            api_base_url: None,
         };
         let cmd = build_command(&opts_empty);
         let args: Vec<_> = cmd.as_std().get_args().collect();
@@ -1016,6 +1044,8 @@ mod tests {
             timeout_secs: None,
             include_directories: vec![],
             model_env_fallback: get_force_model(),
+            api_key: None,
+            api_base_url: None,
         };
         let cmd = build_command(&opts_with_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();

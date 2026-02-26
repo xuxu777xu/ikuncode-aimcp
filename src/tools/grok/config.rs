@@ -82,6 +82,32 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(10)
     }
+
+    /// Overall timeout for a single streaming response (seconds).
+    /// Guards against server keeping connection alive but not completing.
+    pub fn stream_timeout() -> u64 {
+        std::env::var("GROK_STREAM_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(180)
+    }
+
+    /// Total timeout for the entire operation including all retries (seconds).
+    pub fn total_timeout() -> u64 {
+        std::env::var("GROK_TOTAL_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300)
+    }
+
+    /// Max idle time between chunks before aborting (seconds).
+    /// Prevents hang when server sends keep-alive but no real data.
+    pub fn idle_timeout() -> u64 {
+        std::env::var("GROK_IDLE_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30)
+    }
 }
 
 /// Get config info as a JSON value (API key is NOT included)

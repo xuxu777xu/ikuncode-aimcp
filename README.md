@@ -186,6 +186,9 @@ cargo build --release
 | `GROK_RETRY_MAX_ATTEMPTS` | 否 | 最大重试次数（默认：3） |
 | `GROK_RETRY_MULTIPLIER` | 否 | 退避乘数（默认：1.0） |
 | `GROK_RETRY_MAX_WAIT` | 否 | 最大重试等待时间，单位秒（默认：10） |
+| `GROK_STREAM_TIMEOUT` | 否 | 单次 SSE 流响应超时，单位秒（默认：180） |
+| `GROK_TOTAL_TIMEOUT` | 否 | 含重试的整体操作超时，单位秒（默认：300） |
+| `GROK_IDLE_TIMEOUT` | 否 | 两个 chunk 之间最大空闲时间，单位秒（默认：30） |
 
 ## MCP 客户端配置
 

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(head:*)",
+      "mcp__aimcp__codex",
+      "mcp__aimcp__gemini",
+      "mcp__aimcp__get_config_info",
+      "mcp__aimcp__web_search",
+      "mcp__aimcp__gemini_image",
+      "mcp__ace-mcp-augment__codebase-retrieval"
+    ]
+  }
+}

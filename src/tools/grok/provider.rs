@@ -298,19 +298,75 @@ impl GrokSearchProvider {
 
     /// Parse SSE streaming response, extracting content from delta chunks.
     /// Uses `response.chunk()` to read incrementally, avoiding hangs on keep-alive connections.
-    /// Terminates on `data: [DONE]`, `finish_reason` != null, or connection close.
+    /// Terminates on `data: [DONE]`, `finish_reason` != null, idle timeout, or connection close.
     async fn parse_streaming_response(&self, response: reqwest::Response) -> Result<String> {
         let mut content = String::new();
         let mut line_buf = String::new();
         let mut full_body_lines: Vec<String> = Vec::new();
         let mut finished = false;
+        let idle_timeout_secs = Config::idle_timeout();
+        let stream_timeout_secs = Config::stream_timeout();
+        let stream_start = tokio::time::Instant::now();
+        let stream_deadline = stream_start + Duration::from_secs(stream_timeout_secs);
 
         if Config::debug_enabled() {
-            eprintln!("[grok] entering parse_streaming_response, reading chunks...");
+            eprintln!(
+                "[grok] entering parse_streaming_response (stream_timeout={}s, idle_timeout={}s)",
+                stream_timeout_secs, idle_timeout_secs
+            );
         }
 
         let mut response = response;
-        while let Some(chunk) = response.chunk().await.context("Failed to read SSE chunk")? {
+        loop {
+            // Check overall stream timeout
+            if tokio::time::Instant::now() >= stream_deadline {
+                eprintln!(
+                    "[grok] Stream timeout ({}s) exceeded, aborting. Content so far: {} bytes",
+                    stream_timeout_secs,
+                    content.len()
+                );
+                break;
+            }
+
+            // Read next chunk with idle timeout
+            let chunk_result = tokio::time::timeout(
+                Duration::from_secs(idle_timeout_secs),
+                response.chunk(),
+            )
+            .await;
+
+            let chunk = match chunk_result {
+                Ok(Ok(Some(chunk))) => chunk,
+                Ok(Ok(None)) => {
+                    // Stream ended normally (connection closed)
+                    break;
+                }
+                Ok(Err(e)) => {
+                    // Network/read error
+                    if !content.is_empty() {
+                        eprintln!("[grok] Read error after receiving {} bytes of content, using partial result: {}", content.len(), e);
+                        break;
+                    }
+                    return Err(e).context("Failed to read SSE chunk");
+                }
+                Err(_) => {
+                    // Idle timeout — no chunk received within idle_timeout_secs
+                    eprintln!(
+                        "[grok] Idle timeout ({}s) — no data received. Content so far: {} bytes",
+                        idle_timeout_secs,
+                        content.len()
+                    );
+                    if !content.is_empty() {
+                        // We have partial content, use it
+                        break;
+                    }
+                    anyhow::bail!(
+                        "Stream idle timeout: no data received for {}s",
+                        idle_timeout_secs
+                    );
+                }
+            };
+
             let chunk_str = String::from_utf8_lossy(&chunk);
             line_buf.push_str(&chunk_str);
 
@@ -363,6 +419,33 @@ impl GrokSearchProvider {
             }
         }
 
+        // Process any residual data in line_buf (last line without trailing newline)
+        if !finished && !line_buf.is_empty() {
+            let line = line_buf.trim().to_string();
+            if !line.is_empty() {
+                full_body_lines.push(line.clone());
+                if let Some(data_str) = line.strip_prefix("data:") {
+                    let data_str = data_str.trim();
+                    if data_str != "[DONE]" {
+                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(data_str) {
+                            if let Some(choices) = data.get("choices").and_then(|c| c.as_array())
+                            {
+                                if let Some(first) = choices.first() {
+                                    if let Some(delta_content) = first
+                                        .get("delta")
+                                        .and_then(|d| d.get("content"))
+                                        .and_then(|c| c.as_str())
+                                    {
+                                        content.push_str(delta_content);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Fallback: try parsing the entire body as non-streaming JSON
         if content.is_empty() && !full_body_lines.is_empty() {
             let full_text: String = full_body_lines.join("");
@@ -378,13 +461,25 @@ impl GrokSearchProvider {
                         }
                     }
                 }
+                // Check for API error response
+                if content.is_empty() {
+                    if let Some(error) = data.get("error") {
+                        let error_msg = error
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown API error");
+                        anyhow::bail!("API error: {}", error_msg);
+                    }
+                }
             }
         }
 
+        let elapsed = stream_start.elapsed();
         if Config::debug_enabled() {
             eprintln!(
-                "[grok] stream ended (finished={}), lines: {}, content length: {}",
+                "[grok] stream ended (finished={}, elapsed={:.1}s), lines: {}, content length: {}",
                 finished,
+                elapsed.as_secs_f64(),
                 full_body_lines.len(),
                 content.len()
             );
@@ -395,21 +490,58 @@ impl GrokSearchProvider {
             }
         }
 
+        if content.is_empty() {
+            anyhow::bail!(
+                "Empty response from API after {:.1}s ({} lines received)",
+                elapsed.as_secs_f64(),
+                full_body_lines.len()
+            );
+        }
+
         Ok(content)
     }
 
-    /// Execute a streaming HTTP request with retry logic
+    /// Execute a streaming HTTP request with retry logic.
+    /// Wrapped in a total timeout to prevent indefinite blocking.
     async fn execute_stream_with_retry(&self, payload: &serde_json::Value) -> Result<String> {
+        let total_timeout_secs = Config::total_timeout();
+
+        match tokio::time::timeout(
+            Duration::from_secs(total_timeout_secs),
+            self.execute_stream_with_retry_inner(payload),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                anyhow::bail!(
+                    "Total operation timeout ({}s) exceeded. The API server may be unresponsive.",
+                    total_timeout_secs
+                );
+            }
+        }
+    }
+
+    async fn execute_stream_with_retry_inner(
+        &self,
+        payload: &serde_json::Value,
+    ) -> Result<String> {
         let max_attempts = Config::retry_max_attempts();
         let multiplier = Config::retry_multiplier();
         let max_wait = Config::retry_max_wait();
         let url = format!("{}/chat/completions", self.api_url.trim_end_matches('/'));
+        let op_start = std::time::Instant::now();
 
         let mut last_error: Option<anyhow::Error> = None;
 
         for attempt in 0..=max_attempts {
             if attempt > 0 {
-                eprintln!("[grok] Retry attempt {}/{}", attempt, max_attempts);
+                eprintln!(
+                    "[grok] Retry attempt {}/{} (elapsed: {:.1}s)",
+                    attempt,
+                    max_attempts,
+                    op_start.elapsed().as_secs_f64()
+                );
             }
 
             match self
