@@ -4,7 +4,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const BIN_NAME = process.platform === "win32" ? "aimcp.exe" : "aimcp";
+const BIN_NAME = process.platform === "win32" ? "ikuncode-aimcp.exe" : "ikuncode-aimcp";
 
 function findBinary() {
   // 1. Check npm package bin dir (downloaded from release)
@@ -23,8 +23,8 @@ const binPath = findBinary();
 
 if (!binPath) {
   process.stderr.write(
-    "[aimcp] Binary not found.\n" +
-    "Please run: npm install -g ai-cli-mcp\n"
+    "[ikuncode-aimcp] Binary not found.\n" +
+    "Please run: npm install -g ikuncode-aimcp\n"
   );
   process.exit(1);
 }

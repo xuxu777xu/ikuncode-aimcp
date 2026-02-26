@@ -871,7 +871,7 @@ impl ServerHandler for UnifiedServer {
                     .collect();
                 if !dirs.is_empty() {
                     eprintln!(
-                        "aimcp: received {} workspace root(s) from MCP client",
+                        "ikuncode-aimcp: received {} workspace root(s) from MCP client",
                         dirs.len()
                     );
                     *self.roots.write().await = dirs;
@@ -879,13 +879,13 @@ impl ServerHandler for UnifiedServer {
             }
             Ok(Err(e)) => {
                 eprintln!(
-                    "aimcp: failed to list roots from MCP client (non-fatal): {}",
+                    "ikuncode-aimcp: failed to list roots from MCP client (non-fatal): {}",
                     e
                 );
             }
             Err(_) => {
                 eprintln!(
-                    "aimcp: list_roots timed out (client may not support roots/list, non-fatal)"
+                    "ikuncode-aimcp: list_roots timed out (client may not support roots/list, non-fatal)"
                 );
             }
         }

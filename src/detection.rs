@@ -39,7 +39,7 @@ pub fn detect() -> Capabilities {
     };
 
     // Log detection results to stderr
-    eprintln!("[aimcp] Tools detection:");
+    eprintln!("[ikuncode-aimcp] Tools detection:");
     eprintln!("  Gemini:  {}", gemini_status);
     eprintln!("  Codex:   {}", codex_status);
     eprintln!("  Grok:    {}", grok_status);

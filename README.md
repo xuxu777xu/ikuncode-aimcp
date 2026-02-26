@@ -1,4 +1,4 @@
-# aimcp
+# ikuncode-aimcp
 
 [English](README-en.md)
 
@@ -108,22 +108,22 @@
 
 | 平台 | 文件 |
 |------|------|
-| Windows x64 | `aimcp-x86_64-pc-windows-msvc.exe` |
-| macOS Apple Silicon | `aimcp-aarch64-apple-darwin` |
-| macOS Intel | `aimcp-x86_64-apple-darwin` |
-| Linux x64 | `aimcp-x86_64-unknown-linux-gnu` |
+| Windows x64 | `ikuncode-aimcp-x86_64-pc-windows-msvc.exe` |
+| macOS Apple Silicon | `ikuncode-aimcp-aarch64-apple-darwin` |
+| macOS Intel | `ikuncode-aimcp-x86_64-apple-darwin` |
+| Linux x64 | `ikuncode-aimcp-x86_64-unknown-linux-gnu` |
 
 下载后放到 `PATH` 目录中即可使用。macOS / Linux 需要添加执行权限：
 
 ```bash
-chmod +x aimcp-*
-mv aimcp-* /usr/local/bin/aimcp
+chmod +x ikuncode-aimcp-*
+mv ikuncode-aimcp-* /usr/local/bin/ikuncode-aimcp
 ```
 
 ### 方式二：npm 安装
 
 ```bash
-npm install -g @xuxu7777xu/aimcp
+npm install -g ikuncode-aimcp
 ```
 
 安装时自动从 GitHub Releases 下载预编译二进制。若下载失败则回退到 `cargo install`（需要 Rust 工具链）。
@@ -140,7 +140,7 @@ cargo install --git https://github.com/xuxu777xu/ai-cli-mcp.git
 git clone https://github.com/xuxu777xu/ai-cli-mcp.git
 cd ai-cli-mcp
 cargo build --release
-# 二进制文件位于 target/release/aimcp
+# 二进制文件位于 target/release/ikuncode-aimcp
 ```
 
 ## 配置
@@ -200,8 +200,8 @@ cargo build --release
 ```json
 {
   "mcpServers": {
-    "aimcp": {
-      "command": "aimcp",
+    "ikuncode-aimcp": {
+      "command": "ikuncode-aimcp",
       "env": {
         "GEMINI_API_KEY": "your-gemini-api-key",
         "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
@@ -216,56 +216,15 @@ cargo build --release
 }
 ```
 
-### Windsurf / Cursor / Claude Desktop
 
-添加到 MCP 配置文件：
-
-```json
-{
-  "mcpServers": {
-    "aimcp": {
-      "command": "aimcp",
-      "env": {
-        "GEMINI_API_KEY": "your-gemini-api-key",
-        "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
-        "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
-        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
-        "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
-        "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "xai-..."
-      }
-    }
-  }
-}
-```
-
-## Gemini 工作区访问
-
-Gemini CLI 将文件访问限制在其工作目录内。当 MCP 宿主（如 Windsurf）设置了自定义 CWD 时，Gemini 可能无法访问项目文件。
-
-**aimcp 自动处理此问题**：初始化时，它通过 MCP `roots/list` 协议请求客户端的工作区根目录，并将其作为 `--include-directories` 传递给 Gemini CLI。
-
-如果你的 MCP 客户端不支持 `roots/list`，可设置 `GEMINI_INCLUDE_DIRS` 作为备选方案：
-
-```json
-{
-  "mcpServers": {
-    "aimcp": {
-      "env": {
-        "GEMINI_INCLUDE_DIRS": "D:/projects/myapp,D:/projects/other"
-      }
-    }
-  }
-}
-```
 
 ## 启动输出
 
-启动时，aimcp 会将工具检测结果输出到 stderr：
+启动时，ikuncode-aimcp 会将工具检测结果输出到 stderr：
 
 ```
-[aimcp] Starting...
-[aimcp] Tools detection:
+[ikuncode-aimcp] Starting...
+[ikuncode-aimcp] Tools detection:
   Gemini:  ✓ (/usr/local/bin/gemini)
   Codex:   ✗ (not found)
   Grok:    ✓ (API key configured)
@@ -274,7 +233,7 @@ Gemini CLI 将文件访问限制在其工作目录内。当 MCP 宿主（如 Win
 ## 架构
 
 ```
-aimcp/src/
+ikuncode-aimcp/src/
 ├── main.rs           # 入口：clap + UnifiedServer + AdaptiveStdio
 ├── lib.rs            # 模块声明
 ├── server.rs         # UnifiedServer：所有工具 + 运行时可用性检查

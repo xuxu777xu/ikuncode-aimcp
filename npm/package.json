@@ -1,5 +1,5 @@
 {
-  "name": "@xuxu7777xu/aimcp",
+  "name": "ikuncode-aimcp",
   "version": "0.1.1",
   "description": "Unified MCP server combining Gemini, Codex, and Grok Search",
   "license": "GPL-3.0-or-later",
@@ -16,7 +16,7 @@
     "cli"
   ],
   "bin": {
-    "aimcp": "bin/aimcp.js"
+    "ikuncode-aimcp": "bin/ikuncode-aimcp.js"
   },
   "scripts": {
     "postinstall": "node scripts/install.js"
