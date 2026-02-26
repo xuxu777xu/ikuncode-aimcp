@@ -6,7 +6,7 @@ const http = require("http");
 const { createUnzip } = require("zlib");
 const { pipeline } = require("stream");
 
-const REPO = "xuxu777xu/ai-cli-mcp";
+const REPO = "xuxu777xu/ikuncode-aimcp";
 const REPO_URL = `https://github.com/${REPO}.git`;
 const PKG_VERSION = require("../package.json").version;
 

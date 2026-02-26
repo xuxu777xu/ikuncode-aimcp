@@ -104,7 +104,7 @@
 
 ### 方式一：下载预编译二进制（推荐）
 
-从 [GitHub Releases](https://github.com/xuxu777xu/ai-cli-mcp/releases) 下载对应平台的二进制文件：
+从 [GitHub Releases](https://github.com/xuxu777xu/ikuncode-aimcp/releases) 下载对应平台的二进制文件：
 
 | 平台 | 文件 |
 |------|------|
@@ -131,14 +131,14 @@ npm install -g ikuncode-aimcp
 ### 方式三：cargo 安装
 
 ```bash
-cargo install --git https://github.com/xuxu777xu/ai-cli-mcp.git
+cargo install --git https://github.com/xuxu777xu/ikuncode-aimcp.git
 ```
 
 ### 方式四：从源码编译
 
 ```bash
-git clone https://github.com/xuxu777xu/ai-cli-mcp.git
-cd ai-cli-mcp
+git clone https://github.com/xuxu777xu/ikuncode-aimcp.git
+cd ikuncode-aimcp
 cargo build --release
 # 二进制文件位于 target/release/ikuncode-aimcp
 ```
