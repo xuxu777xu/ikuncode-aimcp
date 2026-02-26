@@ -129,6 +129,12 @@ pub struct GeminiImageArgs {
     /// Directory to save the generated image. If not specified, uses the first MCP workspace root or current working directory.
     #[serde(default)]
     pub output_dir: Option<String>,
+    /// Aspect ratio of the generated image. Supported values: "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9". If not specified, the model chooses automatically.
+    #[serde(default)]
+    pub aspect_ratio: Option<String>,
+    /// Resolution/size of the generated image. Supported values: "1K", "2K", "4K". 4K is only available for certain models. If not specified, defaults to model default.
+    #[serde(default)]
+    pub image_size: Option<String>,
 }
 
 /// Input parameters for codex tool
@@ -500,7 +506,16 @@ impl UnifiedServer {
                 )
             })?;
 
-        match gemini_image_api::generate_image(&api_url, &api_key, &model, &args.prompt).await {
+        match gemini_image_api::generate_image(
+            &api_url,
+            &api_key,
+            &model,
+            &args.prompt,
+            args.aspect_ratio.as_deref(),
+            args.image_size.as_deref(),
+        )
+        .await
+        {
             Ok(result) => {
                 let mut contents: Vec<Content> = Vec::new();
                 let mut saved_paths: Vec<String> = Vec::new();

@@ -25,6 +25,17 @@ enum RequestPart {
 #[serde(rename_all = "camelCase")]
 struct GenerationConfig {
     response_modalities: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_config: Option<ImageConfig>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    aspect_ratio: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_size: Option<String>,
 }
 
 /// Response from Gemini API generateContent
@@ -84,6 +95,8 @@ pub async fn generate_image(
     api_key: &str,
     model: &str,
     prompt: &str,
+    aspect_ratio: Option<&str>,
+    image_size: Option<&str>,
 ) -> Result<ImageGenerationResult> {
     let url = format!(
         "{}/v1beta/models/{}:generateContent",
@@ -99,6 +112,14 @@ pub async fn generate_image(
         }],
         generation_config: GenerationConfig {
             response_modalities: vec!["IMAGE".to_string(), "TEXT".to_string()],
+            image_config: if aspect_ratio.is_some() || image_size.is_some() {
+                Some(ImageConfig {
+                    aspect_ratio: aspect_ratio.map(|s| s.to_string()),
+                    image_size: image_size.map(|s| s.to_string()),
+                })
+            } else {
+                None
+            },
         },
     };
 
