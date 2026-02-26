@@ -128,6 +128,31 @@ npm install -g ikuncode-aimcp
 
 安装时自动从 GitHub Releases 下载预编译二进制。若下载失败则回退到 `cargo install`（需要 Rust 工具链）。
 
+> **⚠️ 安装后提示 "Binary not found"？**
+>
+> npm 的 `ignore-scripts` 设置会阻止 postinstall 脚本执行，导致二进制文件未下载。
+>
+> 检查方法：
+> ```bash
+> npm config list
+> ```
+> 如果看到 `ignore-scripts = true`（可能来自环境变量 `npm_config_ignore_scripts`），需要：
+>
+> ```bash
+> # 方法 1：关闭 ignore-scripts
+> npm config set ignore-scripts false
+> # 如果是环境变量设置的，还需要删除环境变量：
+> # Windows: [System.Environment]::SetEnvironmentVariable("npm_config_ignore_scripts", $null, "User")
+> # Linux/macOS: 从 ~/.bashrc 或 ~/.zshrc 中移除相关行
+>
+> # 然后重新安装
+> npm uninstall -g ikuncode-aimcp
+> npm install -g ikuncode-aimcp
+>
+> # 方法 2：保持 ignore-scripts 不变，手动执行安装脚本
+> node $(npm root -g)/ikuncode-aimcp/scripts/install.js
+> ```
+
 ### 方式三：cargo 安装
 
 ```bash
