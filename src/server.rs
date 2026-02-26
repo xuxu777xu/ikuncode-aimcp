@@ -126,6 +126,9 @@ pub struct GeminiImageArgs {
     /// environment variable or falls back to 600 seconds (10 minutes).
     #[serde(default)]
     pub timeout_secs: Option<u64>,
+    /// Directory to save the generated image. If not specified, uses the first MCP workspace root or current working directory.
+    #[serde(default)]
+    pub output_dir: Option<String>,
 }
 
 /// Input parameters for codex tool
@@ -500,13 +503,87 @@ impl UnifiedServer {
         match gemini_image_api::generate_image(&api_url, &api_key, &model, &args.prompt).await {
             Ok(result) => {
                 let mut contents: Vec<Content> = Vec::new();
+                let mut saved_paths: Vec<String> = Vec::new();
 
-                for (data, mime_type) in &result.images {
+                for (idx, (data, mime_type)) in result.images.iter().enumerate() {
                     contents.push(Content::image(data.as_str(), mime_type.as_str()));
+
+                    // Save image to current working directory
+                    let ext = match mime_type.as_str() {
+                        "image/png" => "png",
+                        "image/jpeg" | "image/jpg" => "jpg",
+                        "image/webp" => "webp",
+                        "image/gif" => "gif",
+                        _ => "png",
+                    };
+                    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                    let filename = if result.images.len() == 1 {
+                        format!("gemini_image_{}.{}", timestamp, ext)
+                    } else {
+                        format!("gemini_image_{}_{}.{}", timestamp, idx + 1, ext)
+                    };
+
+                    match base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        data,
+                    ) {
+                        Ok(bytes) => {
+                            // Save directory priority:
+                            // 1. output_dir parameter (caller specifies)
+                            // 2. First MCP workspace root
+                            // 3. Current working directory
+                            let save_dir = if let Some(dir) = args
+                                .output_dir
+                                .as_ref()
+                                .filter(|s| !s.trim().is_empty())
+                            {
+                                PathBuf::from(dir)
+                            } else {
+                                self.roots
+                                    .read()
+                                    .await
+                                    .first()
+                                    .cloned()
+                                    .unwrap_or_else(|| {
+                                        std::env::current_dir()
+                                            .unwrap_or_else(|_| PathBuf::from("."))
+                                    })
+                            };
+                            let save_path = save_dir.join(&filename);
+                            match std::fs::write(&save_path, &bytes) {
+                                Ok(_) => {
+                                    let abs_path = save_path
+                                        .canonicalize()
+                                        .unwrap_or(save_path)
+                                        .display()
+                                        .to_string();
+                                    saved_paths.push(abs_path);
+                                }
+                                Err(e) => {
+                                    eprintln!("[gemini_image] Failed to save {}: {}", filename, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[gemini_image] Failed to decode base64: {}", e);
+                        }
+                    }
                 }
 
                 if let Some(ref text) = result.text {
                     contents.push(Content::text(text));
+                }
+
+                if !saved_paths.is_empty() {
+                    let paths_text = saved_paths
+                        .iter()
+                        .map(|p| format!("- {}", p))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    contents.push(Content::text(format!(
+                        "Saved to:\n{}",
+                        paths_text
+                    )));
                 }
 
                 if contents.is_empty() {
