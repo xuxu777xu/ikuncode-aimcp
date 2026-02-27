@@ -1,8 +1,34 @@
+<div align="center">
+
 # ikuncode-aimcp
+
+**一个二进制，三套 AI 引擎 — Gemini · Codex · Grok**
+
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Built_with-Rust-dea584.svg)](https://www.rust-lang.org/)
 
 [English](README-en.md)
 
-统一 AI MCP 服务器 — 一个 Rust 二进制文件，将 [Gemini CLI](https://github.com/google-gemini/gemini-cli)、[Codex CLI](https://github.com/openai/codex) 和 [Grok Search](https://x.ai/) 整合为一个 MCP 服务器。
+</div>
+
+用 Rust 编写的统一 MCP 服务器，将 [Gemini CLI](https://github.com/google-gemini/gemini-cli)、[Codex CLI](https://github.com/openai/codex) 和 [Grok Search](https://x.ai/) 整合到单个进程中。配置一次，即可在 Cursor / Windsurf / Claude Desktop 等任意 MCP 客户端中使用全部工具。
+
+### 相关项目
+
+| 项目 | 类型 | 适用场景 |
+|:-----|:-----|:---------|
+| **ikuncode-aimcp**（本项目） | MCP Server | 所有 MCP 客户端通用，含 `gemini_image` 图像生成 |
+| [**IKunImage**](https://github.com/deijing/IKunImage) | Claude Code Skill | Claude Code 专用 — 文生图 / 图生图 / 并发批量生成 |
+
+
+
+
+</details>
+
+
+| | |
+|:---:|:---|
+| [![api.ikuncode.cc](https://i.mij.rip/2026/02/13/89608547b83c501429c0b258de08257b.jpeg)](https://api.ikuncode.cc) |  [api.ikuncode.cc](https://api.ikuncode.cc) 提供稳定高效的 API 聚合中转服务，支持 Claude Code、Codex、Gemini 等主流模型。 |
 
 ## 特性
 
