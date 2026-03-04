@@ -93,8 +93,7 @@ pub struct GeminiArgs {
     /// Return all messages (e.g. reasoning, tool calls, etc.) from the gemini session. Set to `False` by default, only the agent's final reply message is returned
     #[serde(default)]
     pub return_all_messages: bool,
-    /// The model to use for the gemini session. If not specified, uses GEMINI_FORCE_MODEL
-    /// environment variable or the Gemini CLI default
+    /// The model to use for the gemini session. If not specified, uses the Gemini CLI default
     #[serde(default)]
     pub model: Option<String>,
     /// Timeout in seconds for gemini execution (1-3600). If not specified, uses GEMINI_DEFAULT_TIMEOUT
@@ -453,7 +452,6 @@ impl UnifiedServer {
             model,
             timeout_secs: args.timeout_secs,
             include_directories,
-            model_env_fallback: gemini::get_force_model(),
             api_key: gemini::get_api_key(),
             api_base_url: gemini::get_api_url(),
         };

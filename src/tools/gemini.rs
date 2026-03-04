@@ -96,9 +96,6 @@ pub struct Options {
     pub model: Option<String>,
     pub timeout_secs: Option<u64>,
     pub include_directories: Vec<PathBuf>,
-    /// Pre-resolved fallback model from environment variable (e.g. GEMINI_FORCE_MODEL or GEMINI_IMAGE_MODEL).
-    /// Used when `model` is not specified. If None, no model flag is passed to the CLI.
-    pub model_env_fallback: Option<String>,
     /// Optional API key to set as GOOGLE_API_KEY on the child process.
     /// Allows gemini and gemini_image to use different API keys.
     pub api_key: Option<String>,
@@ -213,16 +210,15 @@ fn build_command(opts: &Options) -> Command {
         cmd.arg("--sandbox");
     }
 
-    // Use model from options (normalized: trim + empty→None), or fall back to pre-resolved env var
+    // Use model from options if explicitly provided (normalized: trim + empty→None).
+    // If not specified, let the Gemini CLI use its own default.
     let model = opts
         .model
         .as_deref()
         .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from)
-        .or_else(|| opts.model_env_fallback.clone());
+        .filter(|s| !s.is_empty());
 
-    if let Some(ref model_val) = model {
+    if let Some(model_val) = model {
         cmd.args(["--model", model_val]);
     }
 
@@ -508,7 +504,6 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -527,7 +522,6 @@ mod tests {
             model: Some("gemini-pro".to_string()),
             timeout_secs: Some(300),
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -607,7 +601,6 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -644,7 +637,6 @@ mod tests {
             model: Some("gemini-pro".to_string()),
             timeout_secs: Some(120),
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -674,7 +666,6 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -799,7 +790,6 @@ mod tests {
             model: None,
             timeout_secs: Some(0), // Invalid: below minimum
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -825,7 +815,6 @@ mod tests {
             model: None,
             timeout_secs: Some(3601), // Invalid: above maximum
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -849,7 +838,6 @@ mod tests {
             model: None,
             timeout_secs: Some(1), // Valid: minimum
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -874,7 +862,6 @@ mod tests {
             model: None,
             timeout_secs: Some(3600), // Valid: maximum
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -921,9 +908,9 @@ mod tests {
         std::env::set_var(ENV_FORCE_MODEL, "\t\ngemini-flash\n\t");
         assert_eq!(get_force_model(), Some("gemini-flash".to_string()));
 
-        // === Part 2: Test build_command() with force model scenarios ===
+        // === Part 2: Test build_command() — env var should NOT affect model selection ===
 
-        // Scenario 1: No model in options, no env fallback - should NOT have --model flag
+        // Scenario 1: No model in options — should NOT have --model flag (CLI uses its own default)
         std::env::remove_var(ENV_FORCE_MODEL);
         let opts_no_model = Options {
             prompt: "test prompt".to_string(),
@@ -933,7 +920,6 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: None,
             api_key: None,
             api_base_url: None,
         };
@@ -941,12 +927,13 @@ mod tests {
         let args: Vec<_> = cmd.as_std().get_args().collect();
         assert!(
             !args.iter().any(|a| *a == "--model"),
-            "Scenario 1: Should NOT have --model flag when no model specified and no env var"
+            "Scenario 1: Should NOT have --model flag when no model specified"
         );
 
-        // Scenario 2: No model in options, env fallback set - should use env fallback
+        // Scenario 2: No model in options, env var set — should still NOT have --model flag
+        // (env var is ignored; CLI uses its own default)
         std::env::set_var(ENV_FORCE_MODEL, "gemini-2.0-flash");
-        let opts_with_env = Options {
+        let opts_env_set = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
             session_id: None,
@@ -954,22 +941,17 @@ mod tests {
             model: None,
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: get_force_model(),
             api_key: None,
             api_base_url: None,
         };
-        let cmd = build_command(&opts_with_env);
+        let cmd = build_command(&opts_env_set);
         let args: Vec<_> = cmd.as_std().get_args().collect();
         assert!(
-            args.iter().any(|a| *a == "--model"),
-            "Scenario 2: Should have --model flag from env var"
-        );
-        assert!(
-            args.iter().any(|a| *a == "gemini-2.0-flash"),
-            "Scenario 2: Should have model value from env var"
+            !args.iter().any(|a| *a == "--model"),
+            "Scenario 2: Should NOT have --model flag even when env var is set"
         );
 
-        // Scenario 3: Model in options, env fallback set - should use option, not env fallback
+        // Scenario 3: Explicit model in options — should use it
         let opts_explicit = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -978,7 +960,6 @@ mod tests {
             model: Some("gemini-pro".to_string()),
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: get_force_model(),
             api_key: None,
             api_base_url: None,
         };
@@ -988,13 +969,8 @@ mod tests {
             args.iter().any(|a| *a == "gemini-pro"),
             "Scenario 3: Should use explicit model from options"
         );
-        assert!(
-            !args.iter().any(|a| *a == "gemini-2.0-flash"),
-            "Scenario 3: Should NOT use model from env var when option is provided"
-        );
 
-        // Scenario 4: Whitespace-only model in options, env fallback set - should use env fallback
-        // (whitespace treated as None - defensive normalization for internal use)
+        // Scenario 4: Whitespace-only model — treated as no model, CLI uses default
         let opts_whitespace = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -1003,18 +979,17 @@ mod tests {
             model: Some("   ".to_string()),
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: get_force_model(),
             api_key: None,
             api_base_url: None,
         };
         let cmd = build_command(&opts_whitespace);
         let args: Vec<_> = cmd.as_std().get_args().collect();
         assert!(
-            args.iter().any(|a| *a == "gemini-2.0-flash"),
-            "Scenario 4: Whitespace-only model should fall back to env var"
+            !args.iter().any(|a| *a == "--model"),
+            "Scenario 4: Whitespace-only model should be treated as no model"
         );
 
-        // Scenario 5: Empty model in options, env fallback set - should use env fallback
+        // Scenario 5: Empty model — treated as no model, CLI uses default
         let opts_empty = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -1023,18 +998,17 @@ mod tests {
             model: Some("".to_string()),
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: get_force_model(),
             api_key: None,
             api_base_url: None,
         };
         let cmd = build_command(&opts_empty);
         let args: Vec<_> = cmd.as_std().get_args().collect();
         assert!(
-            args.iter().any(|a| *a == "gemini-2.0-flash"),
-            "Scenario 5: Empty model should fall back to env var"
+            !args.iter().any(|a| *a == "--model"),
+            "Scenario 5: Empty model should be treated as no model"
         );
 
-        // Scenario 6: Model with leading/trailing whitespace, env fallback set - should use trimmed model
+        // Scenario 6: Model with leading/trailing whitespace — should use trimmed model
         let opts_with_whitespace = Options {
             prompt: "test prompt".to_string(),
             sandbox: false,
@@ -1043,7 +1017,6 @@ mod tests {
             model: Some("  gemini-ultra  ".to_string()),
             timeout_secs: None,
             include_directories: vec![],
-            model_env_fallback: get_force_model(),
             api_key: None,
             api_base_url: None,
         };
@@ -1052,10 +1025,6 @@ mod tests {
         assert!(
             args.iter().any(|a| *a == "gemini-ultra"),
             "Scenario 6: Should use trimmed model from options"
-        );
-        assert!(
-            !args.iter().any(|a| *a == "gemini-2.0-flash"),
-            "Scenario 6: Should NOT use env var when valid trimmed model in options"
         );
     }
 }

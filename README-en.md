@@ -32,7 +32,7 @@ Unified AI MCP Server — a single Rust binary that combines [Gemini CLI](https:
 | `sandbox` | No | bool | `false` | Run in sandbox mode (isolated execution) |
 | `SESSION_ID` | No | string | — | Resume an existing session for multi-turn conversations |
 | `return_all_messages` | No | bool | `false` | Return all messages including reasoning and tool calls |
-| `model` | No | string | — | Model override. Falls back to `GEMINI_FORCE_MODEL` env var or Gemini CLI default |
+| `model` | No | string | — | Model override. Uses Gemini CLI default if not specified |
 | `timeout_secs` | No | int | 600 | Timeout in seconds (1–3600) |
 
 **Return structure:**
@@ -163,7 +163,6 @@ Install the CLI tools you want to use:
 | `GEMINI_API_URL` | Gemini API endpoint URL (shared by both tools), overrides `GOOGLE_GEMINI_BASE_URL` on child process |
 | `GEMINI_BIN` | Override path to the gemini binary |
 | `GEMINI_DEFAULT_TIMEOUT` | Default timeout in seconds (default: 600) |
-| `GEMINI_FORCE_MODEL` | Default model for regular tasks (used when `gemini` tool has no model specified) |
 | `GEMINI_IMAGE_MODEL` | Default model for image generation (used when `gemini_image` tool has no model specified) |
 | `GEMINI_INCLUDE_DIRS` | Comma-separated extra directories for Gemini CLI `--include-directories` |
 
@@ -205,7 +204,6 @@ Install the CLI tools you want to use:
         "GEMINI_API_KEY": "your-gemini-api-key",
         "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
         "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
-        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
         "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
         "GROK_API_URL": "https://api.x.ai/v1",
         "GROK_API_KEY": "your-key"
@@ -228,7 +226,6 @@ Add to your MCP settings file:
         "GEMINI_API_KEY": "your-gemini-api-key",
         "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
         "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
-        "GEMINI_FORCE_MODEL": "gemini-3.1-pro-preview",
         "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
         "GROK_API_URL": "https://api.x.ai/v1",
         "GROK_API_KEY": "xai-..."

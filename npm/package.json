@@ -1,6 +1,6 @@
 {
   "name": "ikuncode-aimcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Unified MCP server combining Gemini, Codex, and Grok Search",
   "license": "GPL-3.0-or-later",
   "repository": {
