@@ -257,10 +257,11 @@ cargo build --release
       "env": {
         "GEMINI_API_KEY": "your-gemini-api-key",
         "GEMINI_IMAGE_API_KEY": "your-gemini-image-api-key",
-        "GEMINI_API_URL": "https://generativelanguage.googleapis.com",
+        "GEMINI_API_URL": "base_api",
         "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
         "GROK_API_URL": "https://api.x.ai/v1",
-        "GROK_API_KEY": "your-key"
+        "GROK_API_KEY": "base_api",
+        "GROK_MODEL": "grok-4.1-fast"
       }
     }
   }
